@@ -73,5 +73,6 @@ Error in cling::AutoLoadingVisitor::InsertIntoAutoLoadingState:
    Missing FileEntry for RawObjs/AbsChannel.hh
    requested to autoload type AbsChannel
 ```
-
+- frontend에서 root crash문제 (파일 존재 체크 메시지까지만 뜨고 실제 ROOT파일 열기 진행되지 않음)
+  - LD_LIBRARY_PATH를 초기화 한 다음 `mamba activate hep2026.01` 재실행.
 
