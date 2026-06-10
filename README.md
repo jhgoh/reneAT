@@ -36,7 +36,7 @@ mamba activate hep2026.01 ## 로그인 할 때마다.
 LANG=en_US.UTF-8 ## LANG=C에서 빌드 문제 생기는 경우가 있었음.
 
 cd Production
-./raw2flat.py -r <RUN_NUMBER> 
+./raw2flat.py <RUN_NUMBER> 
 ```
 
 ## Troubleshooting
