@@ -48,6 +48,8 @@ cd Production
 ./raw2flat.py <RUN_NUMBER> 
 ```
 
+batch job으로 실행하는 경우, 그리고 progress-bar가 필요없는 경우는 `--no-progress` 옵션을 붙여 실행합니다. 자세한 디버깅 메시지가 필요 없으면 `--no-verbose` 옵션을 붙이면 됩니다.
+
 ## Troubleshooting
 ### mamba 환경 동작 문제
 micromamba를 이용합니다. `mamba activate hep2026.01` 이 동작하지 않으면,
