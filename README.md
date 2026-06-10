@@ -27,6 +27,14 @@ make clean
 make
 ```
 
+RAW 디렉토리를 가리키는 링크를 추가하고 PRD파일 생성을 위한 디렉토리를 추가합니다. 
+단, 아래 ln 명령어 뒤의 경로는 시스템에 따라 달라질 수 있고, PRD디렉토리는 다른 곳에 만들고 링크를 추가하거나, central PRD디렉토리를 가리키게 할 수도 있습니다. (쓰기 권한 확인 필요)
+```bash
+cd Production
+ln -s /store/cpnr-data/RENE/RAW
+mkdir PRD
+```
+
 `Production` 디렉토리 아래에 `libRawObjs.so`와 `Dict.cc`, 그리고 `Dict_rdict.pcm` 파일이 생성되어 있어야 합니다.
 
 ### Production
