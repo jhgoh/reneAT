@@ -68,7 +68,8 @@ mamba env create -f environment.yml
 
 ### 실행시 라이브러리 로딩 문제
 - `LANG=C`일때 라이브러리 로딩 문제:
-  - 증상: 아래와 같은 메시지 발생하며 진행 안됨. ```
+  - 증상: 아래와 같은 메시지 발생하며 진행 안됨.
+```
 Error in cling::AutoLoadingVisitor::InsertIntoAutoLoadingState:
    Missing FileEntry for RawObjs/AbsChannel.hh
    requested to autoload type AbsChannel
