@@ -95,8 +95,9 @@ if len(fNamesFADC) == 0:
     sys.exit(2)
 
 ## Book output file and tree
-sys.path.append(".")
-from extractRunInfo import RunInfo, TCBLogReader
+sys.path.append("python")
+from runinfo import RunInfo
+from logreader import TCBLogReader
 
 class OutTreeFile:
     def __init__(self, fName, runInfo):
