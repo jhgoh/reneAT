@@ -52,6 +52,8 @@ for fNameFADC in glob(f"{rawDir}/FADC_{runNum:06d}.root.*"):
 if len(missingSADCFiles) > 0:
     sys.exit(1)
 subruns.sort()
+fNamesFADC = [fNamesFADC[subrun] for subrun in subruns]
+fNamesSADC = [fNamesSADC[subrun] for subrun in subruns]
 
 import numpy as np
 import ROOT
@@ -61,26 +63,24 @@ ROOT.gInterpreter.ProcessLine('#include "RawObjs/EventInfo.hh"')
 
 ## Check file status. Stop process if there's any problem
 brokenFiles = []
-for subrun in subruns:
-    fNameFADC, fNameSADC = fNamesFADC[subrun], fNamesSADC[subrun]
-
+for subrun, fNameFADC, fNameSADC in zip(subruns, fNamesFADC, fNamesSADC):
     ## Try to open files
     fFADC = ROOT.TFile(fNameFADC)
     fSADC = ROOT.TFile(fNameSADC)
-    if fFADC is None or fFADC.IsZombie():
+    if fFADC == None or fFADC.IsZombie():
         print(f"ERROR: Invalid FADC file {fNameFADC}")
         brokenFiles.append(fNameFADC)
     else:
         tFADC = fFADC.Get("AbsEvent")
-        if tFADC is None:
+        if tFADC == None:
             print(f"ERROR: Invalid FADC tree {fNameFADC}")
             brokenFiles.append(fNameFADC)
-    if fSADC is None or fSADC.IsZombie():
+    if fSADC == None or fSADC.IsZombie():
         print(f"ERROR: Invalid SADC file {fNameSADC}")
         brokenFiles.append(fNameSADC)
     else:
         tSADC = fSADC.Get("AbsEvent")
-        if tSADC is None:
+        if tSADC == None:
             print(f"ERROR: Invalid SADC tree {fNameSADC}")
             brokenFiles.append(fNameSADC)
 if len(brokenFiles) > 0:
@@ -184,6 +184,8 @@ class OutTreeFile:
         fCH = tFADC.FChannelData
         aCH = tSADC.AChannelData
 
+        self.b_F_THR[:] = runInfo.F_THR
+        self.b_F_WaveStartTime[:] = tcbTimeFADC - runInfo.F_DLY
         hasFADCOverThr = 0
         for iCH in range(self.nF):
             ch = fCH.Get(iCH)
@@ -192,36 +194,22 @@ class OutTreeFile:
             self.b_F_Pedestal[iCH] = ch.GetPedestal()
             self.b_F_NDP[iCH] = ch.GetSize()
 
-            #self.b_F_THR[iCH] = runInfo.F_THR[iCH]
-            #self.b_F_WaveStartTime[iCH] = tcbTimeFADC - runInfo.F_DLY[iCH]
-
             waveform = np.frombuffer(ch.GetWaveform(), dtype=np.uint16, count=ch.GetSize())
             self.bs_F_Waveform[iCH].assign(waveform)
-            #nFADCOverThr += (waveform.astype(np.int32) - self.b_F_Pedestal[iCH] > self.b_F_THR[iCH]).sum()
             hasFADCOverThr += np.any(waveform > self.b_F_Pedestal[iCH] + self.b_F_THR[iCH])
-        self.b_F_THR[:] = runInfo.F_THR
-        self.b_F_WaveStartTime[:] = tcbTimeFADC - runInfo.F_DLY
         self.b_EventType[0] = 1 if hasFADCOverThr > 0 else 0
 
+        self.b_S_THR[:] = runInfo.S_THR
+        self.b_S_WaveStartTime[:] = tcbTimeSADC - runInfo.S_DLY
         for iCH in range(self.nS):
             ch = aCH.Get(iCH)
             self.b_S_PmtID[iCH] = ch.GetID()
             self.b_S_Triggered[iCH] = ch.GetBit()
             self.b_S_ADC[iCH] = ch.GetADC()
-
-            #self.b_S_THR[iCH]  = runInfo.S_THR[iCH]
-
-            #delayTime = runInfo.S_DLY[iCH]
-            #startTime = tcbTimeSADC - delayTime
-            #peakTime = ch.GetTime() - startTime
-            #self.b_S_WaveStartTime[iCH] = startTime
-            #self.b_S_PeakTime[iCH] = peakTime if peakTime >= 0 else -99
+        
             self.b_S_PeakTime[iCH] = ch.GetTime()
-        self.b_S_THR[:] = runInfo.S_THR
-        self.b_S_WaveStartTime[:] = tcbTimeSADC - runInfo.S_DLY
         self.b_S_PeakTime -= self.b_S_WaveStartTime
         self.b_S_PeakTime[self.b_S_PeakTime < 0] = -99
-        #nSADCOverThr = (self.b_S_ADC > self.b_S_THR).sum()
         hasSADCOverThr = np.any(self.b_S_ADC > self.b_S_THR)
         if hasSADCOverThr > 0:
             self.b_EventType[0] += 2
@@ -229,10 +217,11 @@ class OutTreeFile:
         self._t.Fill()
 
     def __del__(self):
-        self._f.cd()
-        self._t.Write()
-        self._f.Write()
-        self._f.Close()
+        if self._f != None:
+            self._f.cd()
+            self._t.Write()
+            self._f.Write()
+            self._f.Close()
 
 ## Start merging trees based on the trigger number.
 ## Note that the FADC and SADC stores triggered events separaetely,
@@ -247,17 +236,17 @@ else:
 runInfo = RunInfo(runNum, *TCBLogReader(runNum).ExtractWJ())
 
 iSubrunSADC, iEntrySADC = 0, 0
-fNameSADC = fNamesSADC[subruns[iSubrunSADC]]
+fNameSADC = fNamesSADC[iSubrunSADC]
 fSADC = ROOT.TFile(fNameSADC)
 tSADC = fSADC.Get("AbsEvent")
-for subrun in subruns:
+for subrun, fNameFADC in zip(subruns, fNamesFADC):
     ## Prepare output file
     out = OutTreeFile(f"{outDir}/PRD_{runNum:06d}.{subrun}.root", runInfo)
 
     ## Read the FADC tree
-    fNameFADC = fNamesFADC[subrun]
     fFADC = ROOT.TFile(fNameFADC)
     tFADC = fFADC.Get("AbsEvent")
+    nEvents = 0
     for eFADC in tqdm(tFADC, total=tFADC.GetEntries(), desc=f"Processing subrun={subrun}"):
         trgNumFADC = eFADC.EventInfo.GetTriggerNumber()
         tcbTimeFADC = eFADC.EventInfo.GetTCBTriggerTime()
@@ -269,7 +258,7 @@ for subrun in subruns:
             if iEntrySADC >= tSADC.GetEntries():
                 iSubrunSADC += 1
                 if iSubrunSADC >= len(subruns): break
-                fNameSADC = fNamesSADC[subruns[iSubrunSADC]]
+                fNameSADC = fNamesSADC[iSubrunSADC]
                 fSADC = ROOT.TFile(fNameSADC)
                 tSADC = fSADC.Get("AbsEvent")
                 iEntrySADC = 0
@@ -295,6 +284,7 @@ for subrun in subruns:
         ## Now we are ready to fill up the event
         if isMatched:
             #tSADC.GetEntry(iEntrySADC) ## already done in the loop
+            nEvents += 1
             out.Fill(tFADC, tSADC)
 
     del out
