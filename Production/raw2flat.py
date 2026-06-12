@@ -132,11 +132,11 @@ class OutTreeFile:
         self._t = ROOT.TTree("Event", "Event")
 
         self.b_TrgNum = np.zeros(1, dtype=np.uint32)
-        self.b_EventType = np.zeros(1, dtype=np.uint32)
+        self.b_EventType = np.zeros(1, dtype=np.int32)
         self.b_TCBTRGTime = np.zeros(1, dtype=np.float64)#dtype=np.uint64)
 
         self._t.Branch("TrgNum", self.b_TrgNum, "TrgNum/i")
-        self._t.Branch("EventType", self.b_EventType, "EventType/i")
+        self._t.Branch("EventType", self.b_EventType, "EventType/I")
         self._t.Branch("TCBTRGTime", self.b_TCBTRGTime, "TCBTRGTime/D") #"TCBTRGTime/i")
 
         ## FADC

@@ -60,9 +60,11 @@ for bName in bNames1:
     if arr2.dtype == object:
         arr2 = np.stack(arr2)
 
-    diff_mask = (arr1 != arr2).any(axis=0)
+    diff_mask = (arr1 != arr2)
     if diff_mask.sum() > 0:
         print(f"\u274C\nERROR: Different content! nDiff={diff_mask.sum()}")
+        print(arr1[diff_mask])
+        print(arr2[diff_mask])
         continue
 
     print(f"\u2705")
