@@ -21,7 +21,7 @@ if __name__ == '__main__':
     t2 = f2[tName]
 
     if t1 is None or t2 is None:
-        print(f"❌\nERROR: Invalid TTree...", end='')
+        print(f"\u274C\nERROR: Invalid TTree...", end='')
         if t1 is None: print(f"in {fName1}")
         if t2 is None: print(f"in {fName2}")
         print()
@@ -30,9 +30,9 @@ if __name__ == '__main__':
     print(f"Checking branch names... ", end="")
     bNames1, bNames2 = t1.keys(), t2.keys()
     if set(bNames1) == set(bNames2):
-        print(f"✅ OK, nBranches={len(bNames1)}")
+        print(f"\u2705 OK, nBranches={len(bNames1)}")
     else:
-        print(f"\n❌\nERROR: Different branch names!!!")
+        print(f"\n\u274C\nERROR: Different branch names!!!")
         print(f"         b1={bNames1}")
         print(f"         b2={bNames2}")
         sys.exit(1)
@@ -40,9 +40,9 @@ if __name__ == '__main__':
     print(f"Checking number of events... ", end="")
     n1, n2 = t1.num_entries, t2.num_entries
     if n1 == n2:
-        print(f"✅ OK, n={n1}")
+        print(f"\u2705 OK, n={n1}")
     else:
-        print(f"\n❌\nERROR: Different entries n1={n1}, n2={n2}")
+        print(f"\n\u274C\nERROR: Different entries n1={n1}, n2={n2}")
         sys.exit(2)
 
     print(f"Checking branch contents one by one...")
@@ -51,10 +51,10 @@ if __name__ == '__main__':
         arr1 = t1[bName].array(library='np')
         arr2 = t2[bName].array(library='np')
         if arr1.shape != arr2.shape:
-            print(f"❌\nERROR: Different shape! arr1={arr1.shape} arr2={arr2.shape}")
+            print(f"\u274C\nERROR: Different shape! arr1={arr1.shape} arr2={arr2.shape}")
             continue
         if arr1.dtype != arr2.dtype:
-            print(f"❌\nERROR: Different object type! arr1={arr1.dtype} arr2={arr2.dtype}", end='')
+            print(f"\u274C\nERROR: Different object type! arr1={arr1.dtype} arr2={arr2.dtype}", end='')
             #continue
 
         if arr1.dtype == object:
@@ -64,9 +64,9 @@ if __name__ == '__main__':
 
         diff_mask = (arr1 != arr2)
         if diff_mask.sum() > 0:
-            print(f"❌\nERROR: Different content! nDiff={diff_mask.sum()}")
+            print(f"\u274C\nERROR: Different content! nDiff={diff_mask.sum()}")
             print(f"  different contents in arr1: {arr1[diff_mask]}")
             print(f"  different contents in arr2: {arr2[diff_mask]}")
             continue
 
-        print(f"✅")
+        print(f"\u2705")
