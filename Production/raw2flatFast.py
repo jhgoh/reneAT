@@ -2,6 +2,7 @@
 import sys
 import os
 import argparse
+import time
 from glob import glob
 
 if __name__ == '__main__':
@@ -129,7 +130,12 @@ if __name__ == '__main__':
 
     ## Run C++ event matching and tree filling
     matcher = ROOT.EventMatcher(sadcVec, args.verbose)
+    tTotal = 0.0
     for subrun, fNameFADC in zip(subruns, fNamesFADC):
         fNameOut = f"{outDir}/PRD_{runNum:06d}.{subrun}.root"
+        t0 = time.perf_counter()
         nMatched = matcher.Process(fNameOut, subrun, fNameFADC, cppRunInfo)
-        printInfo(f"subrun={subrun} matched={nMatched}")
+        dt = time.perf_counter() - t0
+        tTotal += dt
+        print(f"subrun={subrun}  matched={nMatched}  time={dt:.1f}s")
+    print(f"Total: {len(subruns)} subruns  time={tTotal:.1f}s")
