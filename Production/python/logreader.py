@@ -5,11 +5,12 @@ import gzip
 class TCBLogReader:
     def __init__(self, runNumber):
         fName = f"TCBLOG/TCB_{runNumber:06}.log"
-        f = None
         if os.path.exists(fName):
             f = open(fName)
         elif os.path.exists(fName+".gz"):
-            f = gzip.open(f"TCBLOG/TCB_{runNumber:06}.log.gz", 'rt')
+            f = gzip.open(fName+".gz", 'rt')
+        else:
+            raise FileNotFoundError(f"TCB log file not found: {fName}[.gz]")
 
         self.lines = []
         for line in f:
@@ -40,7 +41,7 @@ class TCBLogReader:
         return infoFADC, infoSADC
 
 if __name__ == '__main__':
-    reader = TCBLogReader(sys.argv[1])
+    reader = TCBLogReader(int(sys.argv[1]))
     infoFADC, infoSADC = reader.ExtractWJ()
     print("--------- FADC info ---------")
     print(infoFADC)

@@ -24,8 +24,7 @@ if not os.access('PRD', os.W_OK):
     print(f"ERROR: Output directory {outDir} is not writable...")
     print(f"       Please check write permission of the target directory.")
     sys.exit(1)
-printInfo(f"Output directory {outDir} is writable. Creating output directory...")
-os.makedirs(outDir)
+printInfo(f"Output directory {outDir} is writable.")
 
 ## Check the file exists
 rawDir = f'RAW/{runNum:06d}'
@@ -89,6 +88,9 @@ if len(brokenFiles) > 0:
 else:
     fFADC = fSADC = tFADC = tSADC = None
     printInfo(f"Files are OK subruns={len(subruns)}")
+
+printInfo(f"Creating output directory {outDir}...")
+os.makedirs(outDir)
 
 if len(fNamesFADC) == 0:
     print(f"ERROR: No files to process.")
