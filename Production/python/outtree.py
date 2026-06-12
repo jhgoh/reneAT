@@ -83,6 +83,8 @@ class OutTreeFile:
 
     def Fill(self, tFADC, tSADC):
         eFADC, eSADC = tFADC.EventInfo, tSADC.EventInfo
+        trgTimeFADC = eFADC.GetTriggerTime()
+        trgTimeSADC = eSADC.GetTriggerTime()
         tcbTimeFADC = eFADC.GetTCBTriggerTime()
         tcbTimeSADC = eSADC.GetTCBTriggerTime()
         
@@ -93,7 +95,7 @@ class OutTreeFile:
         aCH = tSADC.AChannelData
 
         self.b_F_THR[:] = self.runInfo.F_THR
-        self.b_F_WaveStartTime[:] = tcbTimeFADC - self.runInfo.F_DLY
+        self.b_F_WaveStartTime[:] = trgTimeFADC - self.runInfo.F_DLY
         hasFADCOverThr = 0
         for iCH in range(self.nF):
             ch = fCH.Get(iCH)
@@ -108,16 +110,15 @@ class OutTreeFile:
         self.b_EventType[0] = 1 if hasFADCOverThr > 0 else 0
 
         self.b_S_THR[:] = self.runInfo.S_THR
-        self.b_S_WaveStartTime[:] = tcbTimeSADC - self.runInfo.S_DLY
+        self.b_S_WaveStartTime[:] = trgTimeSADC - self.runInfo.S_DLY
         for iCH in range(self.nS):
             ch = aCH.Get(iCH)
             self.b_S_PmtID[iCH] = ch.GetID()
             self.b_S_Triggered[iCH] = ch.GetBit()
             self.b_S_ADC[iCH] = ch.GetADC()
         
-            self.b_S_PeakTime[iCH] = ch.GetTime()
-        self.b_S_PeakTime -= self.b_S_WaveStartTime
-        self.b_S_PeakTime[self.b_S_PeakTime < 0] = -99
+            self.b_S_PeakTime[iCH] = ch.GetTime() - (tcbTimeSADC - self.runInfo.S_DLY[iCH])
+        #self.b_S_PeakTime[self.b_S_PeakTime < 0] = -99
         hasSADCOverThr = np.any(self.b_S_ADC > self.b_S_THR)
         if hasSADCOverThr > 0:
             self.b_EventType[0] += 2
