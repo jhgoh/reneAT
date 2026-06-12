@@ -105,7 +105,10 @@ class OutTreeFile:
         self.nF = runInfo.nF[0]
         self.nS = runInfo.nS[0]
 
-        self._f = ROOT.TFile(fName, "RECREATE")
+        ## ZSTD at LV4 seem to be reasonable (-10% size, +20% in time)
+        #self._f = ROOT.TFile(fName, "RECREATE")
+        self._f = ROOT.TFile(fName, "RECREATE", "", ROOT.kZSTD)
+        self._f.SetCompressionLevel(4)
 
         ## RunInfo
         self.rt = ROOT.TTree("Run", "Run")
