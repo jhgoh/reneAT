@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
 import ROOT
-ROOT.gSystem.Load("RawObjs/libRawObjs.so")
-ROOT.gInterpreter.AddIncludePath("RawObjs/include")
-ROOT.gInterpreter.ProcessLine('#include "RawObjs/EventInfo.hh"')
-
-from runinfo import RunInfo
 
 # Book output file and tree
 class OutTreeFile:
