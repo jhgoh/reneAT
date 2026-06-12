@@ -5,15 +5,31 @@ RENE실험 데이터 분석을 위하여 RAW데이터로부터 flat ntuple을 �
 RENE실험의 RAW데이터 형식은 CUPDAQ를 기반으로 하며, FADC와 SADC 파일로 나뉘어 생성됩니다.
 데이터 분석의 편의성을 위하여 이를 하나로 합치고, flat ntuple형식으로 변환합니다.
 
+## Directory structure
+```
+Production/
+├── raw2flat.py         # Main production script
+├── RawObjs/            # CUPDAQ raw data format library (C++)
+├── python/
+│   ├── logreader.py    # TCB log parser
+│   ├── runinfo.py      # Run configuration container
+│   └── outtree.py      # ROOT output tree writer
+├── RAW -> ...          # Symlink to raw data
+├── TCBLOG -> ...       # Symlink to TCB log files
+└── PRD/                # Output flat ntuples (or symlink)
+```
+
 ## Flat analysis ntuple production
 RAW 데이터로부터 flat ntuple을 생성합니다. 다음 순서로 진행합니다.
 
 - (로그인 할 때마다) hep2026.01 mamba환경 진입
-- (한번만) `libRawObj.so` 라이브러리 파일 빌드
+- (한번만) `libRawObjs.so` 라이브러리 파일 빌드
+- (한번만) 데이터 디렉토리 링크 및 출력 디렉토리 설정
 - `raw2flat.py` 를 이용해 RAW 파일을 flat ntuple 생성
 
 ### Initial setup
-먼저 `libRawObj.so`파일을 빌드합니다.
+#### 1. 라이브러리 빌드
+먼저 `libRawObjs.so`파일을 빌드합니다.
 CUPDAQ 라이브러리 중 데이터포맷 부분만 가져와 활용하였습니다.
 
 경희대 환경에서는 mamba를 이용하여 root 및 관련 패키지를 사용합니다.
@@ -26,15 +42,28 @@ cd Production/RawObjs
 make clean
 make
 ```
-위 명령어 실행 뒤 `Production` 디렉토리 아래에 `libRawObjs.so`와 `Dict.cc`, 그리고 `Dict_rdict.pcm` 파일이 생성되어 있어야 합니다.
+위 명령어 실행 뒤 `Production/RawObjs` 디렉토리 아래에 `libRawObjs.so`와 `Dict.cc`, 그리고 `Dict_rdict.pcm` 파일이 생성되어 있어야 합니다.
 
-다음으로, 
-RAW 디렉토리를 가리키는 링크를 추가하고 PRD파일 생성을 위한 디렉토리를 추가합니다. 
-단, 아래 ln 명령어 뒤의 경로는 시스템에 따라 달라질 수 있고, PRD디렉토리는 다른 곳에 만들고 링크를 추가하거나, central PRD디렉토리를 가리키게 할 수도 있습니다. (쓰기 권한 확인 필요)
+#### 2. 데이터 디렉토리 링크 및 출력 디렉토리 설정
+`raw2flat.py`는 `Production/` 아래에 다음 세 디렉토리가 있어야 합니다.
+
+| 디렉토리 | 용도 | 설정 방법 |
+|----------|------|-----------|
+| `RAW/`   | FADC/SADC raw 데이터 입력 | symlink 필수 |
+| `TCBLOG/` | TCB 로그 파일 (run config 추출) | symlink 필수 |
+| `PRD/`   | flat ntuple 출력 | `mkdir` 또는 symlink |
+
+경희대 환경에서의 설정 예시입니다. 경로는 시스템에 따라 달라질 수 있습니다.
 ```bash
 cd Production
 ln -s /store/cpnr-data/RENE/RAW
+ln -s /store/cpnr-data/RENE/DAQLOG/TCB TCBLOG
 mkdir PRD
+```
+
+`PRD/`는 로컬에 만드는 것이 기본입니다. 중앙 저장소에 바로 쓰려는 경우에는 `mkdir` 대신 symlink를 사용할 수 있습니다. 이 경우 해당 디렉토리에 대한 쓰기 권한이 있어야 합니다.
+```bash
+ln -s /store/cpnr-data/RENE/PRD/ PRD
 ```
 
 
