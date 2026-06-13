@@ -2,14 +2,14 @@
 import sys
 import os
 import argparse
+import time
 from glob import glob
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=f'{sys.argv[0]}: RENE RAW to Flat Production file')
+    parser = argparse.ArgumentParser(description=f'{sys.argv[0]}: RENE RAW to Flat Production file (C++ backend)')
     parser.add_argument('runNum', type=int, help='Run number')
-    #parser.add_argument('runNum', type=int, nargs='+', help='Run number')
     parser.add_argument('-v', '--verbose', action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument('-p', '--progress', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--progress', action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
     runNum = args.runNum
@@ -63,7 +63,6 @@ if __name__ == '__main__':
         sys.exit(2)
 
     ## ROOT and numpy are imported here to avoid slow startup on early exit above
-    import numpy as np
     import ROOT
     ROOT.gSystem.Load("RawObjs/libRawObjs.so")
     ROOT.gInterpreter.AddIncludePath("RawObjs/include")
@@ -72,7 +71,6 @@ if __name__ == '__main__':
     ## Check file status. Stop process if there's any problem
     brokenFiles = []
     for subrun, fNameFADC, fNameSADC in zip(subruns, fNamesFADC, fNamesSADC):
-        ## Try to open files
         fFADC = ROOT.TFile(fNameFADC)
         fSADC = ROOT.TFile(fNameSADC)
         if fFADC == None or fFADC.IsZombie():  # == None intentional: ROOT object comparison
@@ -105,72 +103,32 @@ if __name__ == '__main__':
     sys.path.append("python")
     from runinfo import RunInfo
     from logreader import TCBLogReader
-    from outtree import OutTreeFile
 
-    ## Start merging trees based on the trigger number.
-    ## Note that the FADC and SADC stores triggered events separaetely,
-    ## therefore same triggered event can be stored in different subruns.
-    if args.progress:
-        from tqdm import tqdm
-    else:
-        def tqdm(line, **kwargs):
-            return line
+    ## Load C++ EventMatcher library
+    ROOT.gSystem.Load("EventMatcher/libEventMatcher.so")
+    ROOT.gInterpreter.AddIncludePath("EventMatcher/include")
+    ROOT.gInterpreter.ProcessLine('#include "EventMatcher.h"')
 
-    ## Extract run information from the log file
+    ## Extract run information from the log file (reuse existing Python logreader)
     runInfo = RunInfo(runNum, *TCBLogReader(runNum).ExtractWJ())
+    runInfo_cpp = ROOT.EventFiller.RunInfo()
+    runInfo_cpp.runNum = int(runInfo.runNumber[0])
+    for key in [x for x in dir(runInfo) if x.startswith('F_') or x.startswith('S_')]:
+        setattr(runInfo_cpp, key, getattr(runInfo, key))
 
-    iSubrunSADC, iEntrySADC = 0, 0
-    fNameSADC = fNamesSADC[iSubrunSADC]
-    fSADC = ROOT.TFile(fNameSADC)
-    tSADC = fSADC.Get("AbsEvent")
+    ## Build SADC filename list as std::vector<string> for C++ EventMatcher
+    sadcVec = ROOT.std.vector('string')()
+    for fName in fNamesSADC:
+        sadcVec.push_back(fName)
+
+    ## Run C++ event matching and tree filling
+    matcher = ROOT.EventMatcher(sadcVec, args.progress)
+    tTotal = 0.0
     for subrun, fNameFADC in zip(subruns, fNamesFADC):
-        ## Prepare output file
-        out = OutTreeFile(f"{outDir}/PRD_{runNum:06d}.{subrun}.root", runInfo)
-
-        ## Read the FADC tree
-        fFADC = ROOT.TFile(fNameFADC)
-        tFADC = fFADC.Get("AbsEvent")
-        nEvents = 0
-        for eFADC in tqdm(tFADC, total=tFADC.GetEntries(), desc=f"Processing subrun={subrun}"):
-            trgNumFADC = eFADC.EventInfo.GetTriggerNumber()
-            tcbTimeFADC = eFADC.EventInfo.GetTCBTriggerTime()
-
-            ## Find matching SADC event, start scanning from the previous trial event
-            isMatched, isToSkip = False, False
-            while True:
-                ## Proceed to next file if the SADC file is already consumed up.
-                if iEntrySADC >= tSADC.GetEntries():
-                    iSubrunSADC += 1
-                    if iSubrunSADC >= len(subruns):
-                        break
-                    fNameSADC = fNamesSADC[iSubrunSADC]
-                    fSADC = ROOT.TFile(fNameSADC)
-                    tSADC = fSADC.Get("AbsEvent")
-                    iEntrySADC = 0
-
-                ## Load the SADC event
-                tSADC.GetEntry(iEntrySADC)
-                trgNumSADC = tSADC.EventInfo.GetTriggerNumber()
-                tcbTimeSADC = tSADC.EventInfo.GetTCBTriggerTime()
-
-                ## Skip the FADC event if next one already came
-                if trgNumSADC > trgNumFADC:
-                    isToSkip = True
-                    break
-                elif trgNumSADC == trgNumFADC:
-                    isMatched = True
-                    iEntrySADC += 1
-                    break
-
-                iEntrySADC += 1
-
-            if isToSkip:
-                continue
-
-            ## Now we are ready to fill up the event
-            if isMatched:
-                #tSADC.GetEntry(iEntrySADC) ## already done in the loop
-                nEvents += 1
-                out.Fill(tFADC, tSADC)
-
-        del out
+        fNameOut = f"{outDir}/PRD_{runNum:06d}.{subrun}.root"
+        t0 = time.perf_counter()
+        nMatched = matcher.Process(fNameOut, subrun, fNameFADC, runInfo_cpp)
+        dt = time.perf_counter() - t0
+        tTotal += dt
+        printInfo(f"subrun={subrun}  matched={nMatched}  time={dt:.1f}s")
+    printInfo(f"Total: {len(subruns)} subruns  time={tTotal:.1f}s")
