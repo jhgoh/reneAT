@@ -10,10 +10,12 @@ RENE실험의 RAW데이터 형식은 CUPDAQ를 기반으로 하며, FADC와 SADC
 Production/
 ├── raw2flat.py         # Main production script
 ├── RawObjs/            # CUPDAQ raw data format library (C++)
+├── EventMatcher/       # C++ event matching and tree filling library
 ├── python/
 │   ├── logreader.py    # TCB log parser
-│   ├── runinfo.py      # Run configuration container
-│   └── outtree.py      # ROOT output tree writer
+│   └── runinfo.py      # Run configuration container
+├── test/
+│   └── comparePRD.py   # Validate two PRD files are identical
 ├── RAW -> ...          # Symlink to raw data
 ├── TCBLOG -> ...       # Symlink to TCB log files
 └── PRD/                # Output flat ntuples (or symlink)
@@ -29,20 +31,22 @@ RAW 데이터로부터 flat ntuple을 생성합니다. 다음 순서로 진행�
 
 ### Initial setup
 #### 1. 라이브러리 빌드
-먼저 `libRawObjs.so`파일을 빌드합니다.
-CUPDAQ 라이브러리 중 데이터포맷 부분만 가져와 활용하였습니다.
+먼저 `libRawObjs.so`와 `libEventMatcher.so` 파일을 빌드합니다.
+`libEventMatcher.so`는 `libRawObjs.so`에 의존하므로 순서대로 빌드합니다.
 
 경희대 환경에서는 mamba를 이용하여 root 및 관련 패키지를 사용합니다.
 잘 되지 않으면 아래 Troubleshooting 섹션을 확인 해 보세요.
 ```bash
 mamba activate hep2026.01 ## 로그인 할 때마다.
-LANG=en_US.UTF-8 ## LANG=C에서 빌드 문제 생기는 경우가 있었음.
+export LANG=en_US.UTF-8 ## LANG=C에서 빌드 문제 생기는 경우가 있었음.
 
 cd Production/RawObjs
-make clean
-make
+make clean && make
+
+cd ../EventMatcher
+make clean && make
 ```
-위 명령어 실행 뒤 `Production/RawObjs` 디렉토리 아래에 `libRawObjs.so`와 `Dict.cc`, 그리고 `Dict_rdict.pcm` 파일이 생성되어 있어야 합니다.
+위 명령어 실행 뒤 `Production/RawObjs/libRawObjs.so`와 `Production/EventMatcher/libEventMatcher.so` 파일이 생성되어 있어야 합니다.
 
 #### 2. 데이터 디렉토리 링크 및 출력 디렉토리 설정
 `raw2flat.py`는 `Production/` 아래에 다음 세 디렉토리가 있어야 합니다.
@@ -71,7 +75,7 @@ ln -s /store/cpnr-data/RENE/PRD/ PRD
 아래와 같이 production을 진행합니다.
 ```
 mamba activate hep2026.01 ## 로그인 할 때마다.
-LANG=en_US.UTF-8 ## LANG=C에서 빌드 문제 생기는 경우가 있었음.
+export LANG=en_US.UTF-8 ## LANG=C에서 빌드 문제 생기는 경우가 있었음.
 
 cd Production
 ./raw2flat.py <RUN_NUMBER> 
