@@ -19,3 +19,8 @@ class RunInfo:
         self.nF = np.array([nF], dtype=np.int32)
         self.nS = np.array([nS], dtype=np.int32)
 
+    def GetDict(self):
+        return {attr: getattr(self, attr).tolist()
+                for attr in vars(self)
+                if attr.startswith(('F_', 'S_'))}
+

@@ -109,19 +109,11 @@ if __name__ == '__main__':
     ROOT.gInterpreter.ProcessLine('#include "EventMatcher.h"')
 
     ## Extract run information from the log file (reuse existing Python logreader)
-    runInfo_py = RunInfo(runNum, *TCBLogReader(runNum).ExtractWJ())
+    runInfo = RunInfo(runNum, *TCBLogReader(runNum).ExtractWJ())
 
     ## Convert Python RunInfo to C++ EventFiller::RunInfo
-    cppRunInfo = ROOT.EventFiller.RunInfo()
-    cppRunInfo.runNumber = int(runInfo_py.runNumber[0])
-    for v in runInfo_py.F_PID: cppRunInfo.F_PID.push_back(int(v))
-    for v in runInfo_py.F_DLY: cppRunInfo.F_DLY.push_back(int(v))
-    for v in runInfo_py.F_THR: cppRunInfo.F_THR.push_back(int(v))
-    for v in runInfo_py.F_RL:  cppRunInfo.F_RL.push_back(int(v))
-    for v in runInfo_py.S_PID: cppRunInfo.S_PID.push_back(int(v))
-    for v in runInfo_py.S_DLY: cppRunInfo.S_DLY.push_back(int(v))
-    for v in runInfo_py.S_THR: cppRunInfo.S_THR.push_back(int(v))
-    for v in runInfo_py.S_GW:  cppRunInfo.S_GW.push_back(int(v))
+    runInfo_cpp = ROOT.EventFiller.RunInfo()
+    runInfo_cpp.Set(int(runInfo.runNumber[0]), runInfo.GetDict())
 
     ## Build SADC filename list as std::vector<string> for C++ EventMatcher
     sadcVec = ROOT.std.vector('string')()
@@ -134,7 +126,7 @@ if __name__ == '__main__':
     for subrun, fNameFADC in zip(subruns, fNamesFADC):
         fNameOut = f"{outDir}/PRD_{runNum:06d}.{subrun}.root"
         t0 = time.perf_counter()
-        nMatched = matcher.Process(fNameOut, subrun, fNameFADC, cppRunInfo)
+        nMatched = matcher.Process(fNameOut, subrun, fNameFADC, runInfo_cpp)
         dt = time.perf_counter() - t0
         tTotal += dt
         print(f"subrun={subrun}  matched={nMatched}  time={dt:.1f}s")
