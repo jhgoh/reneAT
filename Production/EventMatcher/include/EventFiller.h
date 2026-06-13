@@ -18,14 +18,6 @@ public:
     unsigned int runNumber;
     std::vector<int> F_PID, F_DLY, F_THR, F_RL;  // size = nF, per FADC channel
     std::vector<int> S_PID, S_DLY, S_THR, S_GW;  // size = nS, per SADC channel
-
-    void Set(unsigned int runNum, const std::map<std::string, std::vector<int>>& data) {
-      runNumber = runNum;
-      F_PID = data.at("F_PID");  F_DLY = data.at("F_DLY");
-      F_THR = data.at("F_THR");  F_RL  = data.at("F_RL");
-      S_PID = data.at("S_PID");  S_DLY = data.at("S_DLY");
-      S_THR = data.at("S_THR");  S_GW  = data.at("S_GW");
-    }
   };
 
   EventFiller(const std::string& fName, const RunInfo& info);

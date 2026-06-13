@@ -110,10 +110,10 @@ if __name__ == '__main__':
 
     ## Extract run information from the log file (reuse existing Python logreader)
     runInfo = RunInfo(runNum, *TCBLogReader(runNum).ExtractWJ())
-
-    ## Convert Python RunInfo to C++ EventFiller::RunInfo
     runInfo_cpp = ROOT.EventFiller.RunInfo()
-    runInfo_cpp.Set(int(runInfo.runNumber[0]), runInfo.GetDict())
+    runInfo_cpp.runNum = int(runInfo.runNumber[0])
+    for key in [x for x in dir(runInfo) if x.startswith('F_') or x.startswith('S_')]:
+        setattr(runInfo_cpp, key, getattr(runInfo, key))
 
     ## Build SADC filename list as std::vector<string> for C++ EventMatcher
     sadcVec = ROOT.std.vector('string')()
