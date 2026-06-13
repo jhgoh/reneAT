@@ -129,5 +129,5 @@ if __name__ == '__main__':
         nMatched = matcher.Process(fNameOut, subrun, fNameFADC, runInfo_cpp)
         dt = time.perf_counter() - t0
         tTotal += dt
-        print(f"subrun={subrun}  matched={nMatched}  time={dt:.1f}s")
-    print(f"Total: {len(subruns)} subruns  time={tTotal:.1f}s")
+        printInfo(f"subrun={subrun}  matched={nMatched}  time={dt:.1f}s")
+    printInfo(f"Total: {len(subruns)} subruns  time={tTotal:.1f}s")
