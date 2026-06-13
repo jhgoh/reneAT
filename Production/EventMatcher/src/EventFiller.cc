@@ -2,58 +2,36 @@
 #include "RawObjs/FChannel.hh"
 #include "RawObjs/AChannel.hh"
 
-#include "TObject.h"
-
 #include <sstream>
 
 EventFiller::EventFiller(const std::string& fName, const RunInfo& info)
+  : runInfo_(info)
 {
-  nF_ = info.F_PID.size();
-  nS_ = info.S_PID.size();
-  F_THR_ref_ = info.F_THR;
-  F_DLY_ref_ = info.F_DLY;
-  S_THR_ref_ = info.S_THR;
-  S_DLY_ref_ = info.S_DLY;
+  nF_ = runInfo_.F_PID.size();
+  nS_ = runInfo_.S_PID.size();
 
   // ZSTD level 4: ~-10% size, ~+20% time vs default -- matches Python OutTreeFile
   fout_ = new TFile(fName.c_str(), "RECREATE", "",
                     ROOT::CompressionSettings(ROOT::kZSTD, 4));
 
   // --- Run tree ---
-  rb_RunNumber_ = info.runNumber;
+  rb_RunNumber_ = runInfo_.runNumber;
   rb_nF_ = nF_;
   rb_nS_ = nS_;
 
-  rb_F_PmtID_ = new int[nF_];  rb_F_DLY_ = new int[nF_];
-  rb_F_THR_   = new int[nF_];  rb_F_RL_  = new int[nF_];
-  rb_S_PmtID_ = new int[nS_];  rb_S_DLY_ = new int[nS_];
-  rb_S_THR_   = new int[nS_];  rb_S_GW_  = new int[nS_];
-  for ( int i=0; i<nF_; ++i ) {
-    rb_F_PmtID_[i] = info.F_PID[i];
-    rb_F_DLY_[i]   = info.F_DLY[i];
-    rb_F_THR_[i]   = info.F_THR[i];
-    rb_F_RL_[i]    = info.F_RL[i];
-  }
-  for ( int i=0; i<nS_; ++i ) {
-    rb_S_PmtID_[i] = info.S_PID[i];
-    rb_S_DLY_[i]   = info.S_DLY[i];
-    rb_S_THR_[i]   = info.S_THR[i];
-    rb_S_GW_[i]    = info.S_GW[i];
-  }
-
   fout_->cd();
   runTree_ = new TTree("Run", "Run");
-  runTree_->Branch("RunNumber", &rb_RunNumber_, "RunNumber/i");
-  runTree_->Branch("nF",       &rb_nF_,        "nF/I");
-  runTree_->Branch("F_PmtID", rb_F_PmtID_,    "F_PmtID[nF]/I");
-  runTree_->Branch("F_DLY",   rb_F_DLY_,      "F_DLY[nF]/I");
-  runTree_->Branch("F_THR",   rb_F_THR_,      "F_THR[nF]/I");
-  runTree_->Branch("F_RL",    rb_F_RL_,       "F_RL[nF]/I");
-  runTree_->Branch("nS",       &rb_nS_,        "nS/I");
-  runTree_->Branch("S_PmtID", rb_S_PmtID_,    "S_PmtID[nS]/I");
-  runTree_->Branch("S_DLY",   rb_S_DLY_,      "S_DLY[nS]/I");
-  runTree_->Branch("S_THR",   rb_S_THR_,      "S_THR[nS]/I");
-  runTree_->Branch("S_GW",    rb_S_GW_,       "S_GW[nS]/I");
+  runTree_->Branch("RunNumber", &rb_RunNumber_,          "RunNumber/i");
+  runTree_->Branch("nF",        &rb_nF_,                 "nF/I");
+  runTree_->Branch("F_PmtID",  runInfo_.F_PID.data(),   "F_PmtID[nF]/I");
+  runTree_->Branch("F_DLY",    runInfo_.F_DLY.data(),   "F_DLY[nF]/I");
+  runTree_->Branch("F_THR",    runInfo_.F_THR.data(),   "F_THR[nF]/I");
+  runTree_->Branch("F_RL",     runInfo_.F_RL.data(),    "F_RL[nF]/I");
+  runTree_->Branch("nS",        &rb_nS_,                 "nS/I");
+  runTree_->Branch("S_PmtID",  runInfo_.S_PID.data(),   "S_PmtID[nS]/I");
+  runTree_->Branch("S_DLY",    runInfo_.S_DLY.data(),   "S_DLY[nS]/I");
+  runTree_->Branch("S_THR",    runInfo_.S_THR.data(),   "S_THR[nS]/I");
+  runTree_->Branch("S_GW",     runInfo_.S_GW.data(),    "S_GW[nS]/I");
   runTree_->Fill();
 
   // --- Event tree ---
@@ -110,9 +88,6 @@ EventFiller::~EventFiller()
   fout_->Close();
   delete fout_;
 
-  delete[] rb_F_PmtID_;  delete[] rb_F_DLY_;  delete[] rb_F_THR_;  delete[] rb_F_RL_;
-  delete[] rb_S_PmtID_;  delete[] rb_S_DLY_;  delete[] rb_S_THR_;  delete[] rb_S_GW_;
-
   delete[] b_F_PmtID_;  delete[] b_F_Triggered_;  delete[] b_F_NDP_;
   delete[] b_F_THR_;    delete[] b_F_WaveStartTime_;  delete[] b_F_Pedestal_;
   delete[] b_F_Waveform_;
@@ -137,14 +112,14 @@ void EventFiller::Fill(EventInfo* eFADC, EventInfo* eSADC, FChannelData* fCh, AC
     const int ndp = ch->GetSize();
     const unsigned short* wave = ch->GetWaveform();
     const int ped = (int)ch->GetPedestal();
-    const int thr = F_THR_ref_[iCH];
+    const int thr = runInfo_.F_THR[iCH];
 
     b_F_PmtID_[iCH]         = ch->GetID();
     b_F_Triggered_[iCH]     = ch->GetBit();
     b_F_Pedestal_[iCH]      = (short)ped;
     b_F_NDP_[iCH]           = ndp;
     b_F_THR_[iCH]           = (unsigned short)thr;
-    b_F_WaveStartTime_[iCH] = trgTimeFADC - F_DLY_ref_[iCH];
+    b_F_WaveStartTime_[iCH] = trgTimeFADC - runInfo_.F_DLY[iCH];
     b_F_Waveform_[iCH].assign(wave, wave + ndp);
 
     for ( int i=0; i<ndp; ++i ) {
@@ -162,11 +137,11 @@ void EventFiller::Fill(EventInfo* eFADC, EventInfo* eSADC, FChannelData* fCh, AC
     b_S_PmtID_[iCH]         = ch->GetID();
     b_S_Triggered_[iCH]     = ch->GetBit();
     b_S_ADC_[iCH]           = adc;
-    b_S_THR_[iCH]           = (unsigned short)S_THR_ref_[iCH];
-    b_S_WaveStartTime_[iCH] = trgTimeSADC - S_DLY_ref_[iCH];
-    b_S_PeakTime_[iCH]      = (double)ch->GetTime() - (tcbTimeSADC - S_DLY_ref_[iCH]);
+    b_S_THR_[iCH]           = (unsigned short)runInfo_.S_THR[iCH];
+    b_S_WaveStartTime_[iCH] = trgTimeSADC - runInfo_.S_DLY[iCH];
+    b_S_PeakTime_[iCH]      = (double)ch->GetTime() - (tcbTimeSADC - runInfo_.S_DLY[iCH]);
 
-    if ( adc > S_THR_ref_[iCH] ) hasSADCOverThr = true;
+    if ( adc > runInfo_.S_THR[iCH] ) hasSADCOverThr = true;
   }
   if ( hasSADCOverThr ) b_EventType_ += 2;
 

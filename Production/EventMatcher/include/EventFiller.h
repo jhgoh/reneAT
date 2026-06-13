@@ -29,15 +29,12 @@ private:
   TTree* runTree_;
   TTree* eventTree_;
 
+  RunInfo runInfo_;  // owned copy; .data() pointers used for Run tree branch booking
   int nF_, nS_;
-  std::vector<int> F_THR_ref_, F_DLY_ref_;  // cached per-channel thresholds/delays
-  std::vector<int> S_THR_ref_, S_DLY_ref_;
 
-  // Run tree buffers (filled once at construction)
+  // Run tree scalar buffers (vectors use runInfo_.*.data() directly)
   unsigned int rb_RunNumber_;
   int rb_nF_, rb_nS_;
-  int *rb_F_PmtID_, *rb_F_DLY_, *rb_F_THR_, *rb_F_RL_;
-  int *rb_S_PmtID_, *rb_S_DLY_, *rb_S_THR_, *rb_S_GW_;
 
   // Event tree buffers
   unsigned int b_TrgNum_;
