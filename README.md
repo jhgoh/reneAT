@@ -111,7 +111,8 @@ mamba env create -f environment.yml
   - 증상: 다음과 같은 메시지 발생하며 진행 안됨. `Error in cling::AutoLoadingVisitor::InsertIntoAutoLoadingState:\n Missing FileEntry for RawObjs/AbsChannel.hh\n   requested to autoload type AbsChannel`
   - 해결방법:`LANG=en_US.UTF-8`로 바꾸면 됨.
 - frontend에서 root crash문제
-  - 증상: 파일 존재 체크 메시지까지만 뜨고 실제 ROOT파일 열기 진행되지 않음
-  - 추가증상: `root -l` 실행시 root자체가 crash남.
-  - 해결방법: LD_LIBRARY_PATH에 두 library가 중복해 적혀있어 충돌난것임. LD_LIBRARY_PATH에서 mamba쪽만 살린 다음 재실행.
+  - 증상1: 파일 존재 체크 메시지까지만 뜨고 실제 ROOT파일 열기 진행되지 않음
+  - 증상2: `root -l` 실행시 root자체가 crash남.
+  - 증상3: `cling (LLVM option parsing): for the --optimize-regalloc option: may only occur zero or one times!` 메시지를 내고 종료됨.
+  - 해결방법: LD_LIBRARY_PATH에 서로 다른 root library가 중복해 적혀있어 충돌난것임. LD_LIBRARY_PATH에서 mamba쪽만 살린 다음 재실행.
 
