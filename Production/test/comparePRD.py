@@ -1,13 +1,20 @@
 #!/usr/bin/env python
 import sys
 import os
+import argparse
 import uproot
 import numpy as np
 
 if __name__ == '__main__':
-    fName1 = sys.argv[1]
-    fName2 = sys.argv[2]
-    tName = "Event" if len(sys.argv) <= 3 else sys.argv[3]
+    parser = argparse.ArgumentParser(description=f'{sys.argv[0]}: Compare input trees')
+    parser.add_argument('file1', type=str, help='File1')
+    parser.add_argument('file2', type=str, help='File2')
+    parser.add_argument('-t', '--tree-name', type=str, default='Event', help='TTree name')
+    parser.add_argument('-k', '--skip-missing', type=bool, default=True, help='Skip missing branch')
+    args = parser.parse_args()
+
+    fName1, fName2 = args.file1, args.file2
+    tName = args.tree_name
 
     print(f"{os.path.basename(sys.argv[0])}: Compare flat trees in two input ROOT files")
     print(f"  File1 = {fName1}")
@@ -35,7 +42,8 @@ if __name__ == '__main__':
         print(f"\n\u274C\nERROR: Different branch names!!!")
         print(f"         b1={bNames1}")
         print(f"         b2={bNames2}")
-        sys.exit(1)
+        if not args.skip_missing: sys.exit(1)
+    bNames = set(bNames1).intersection(bNames2)
 
     print(f"Checking number of events... ", end="")
     n1, n2 = t1.num_entries, t2.num_entries
@@ -46,7 +54,7 @@ if __name__ == '__main__':
         sys.exit(2)
 
     print(f"Checking branch contents one by one...")
-    for bName in bNames1:
+    for bName in bNames:
         print(f"Checking branch \"{bName}\"...", end="")
         arr1 = t1[bName].array(library='np')
         arr2 = t2[bName].array(library='np')
