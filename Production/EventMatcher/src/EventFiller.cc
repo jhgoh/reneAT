@@ -4,8 +4,8 @@
 
 #include <sstream>
 
-EventFiller::EventFiller(const std::string& fName, const RunInfo& info)
-  : runInfo_(info)
+EventFiller::EventFiller(const std::string& fName, const RunInfo& runInfo, const bool fillRunInfo)
+  : runInfo_(runInfo), fillRunInfo_(fillRunInfo)
 {
   nF_ = runInfo_.F_PID.size();
   nS_ = runInfo_.S_PID.size();
@@ -14,25 +14,26 @@ EventFiller::EventFiller(const std::string& fName, const RunInfo& info)
   fout_ = new TFile(fName.c_str(), "RECREATE", "",
                     ROOT::CompressionSettings(ROOT::kZSTD, 4));
 
-  // --- Run tree ---
-  rb_RunNumber_ = runInfo_.runNumber;
-  rb_nF_ = nF_;
-  rb_nS_ = nS_;
-
   fout_->cd();
-  runTree_ = new TTree("Run", "Run");
-  runTree_->Branch("RunNumber", &rb_RunNumber_,          "RunNumber/i");
-  runTree_->Branch("nF",        &rb_nF_,                 "nF/I");
-  runTree_->Branch("F_PmtID",  runInfo_.F_PID.data(),   "F_PmtID[nF]/I");
-  runTree_->Branch("F_DLY",    runInfo_.F_DLY.data(),   "F_DLY[nF]/I");
-  runTree_->Branch("F_THR",    runInfo_.F_THR.data(),   "F_THR[nF]/I");
-  runTree_->Branch("F_RL",     runInfo_.F_RL.data(),    "F_RL[nF]/I");
-  runTree_->Branch("nS",        &rb_nS_,                 "nS/I");
-  runTree_->Branch("S_PmtID",  runInfo_.S_PID.data(),   "S_PmtID[nS]/I");
-  runTree_->Branch("S_DLY",    runInfo_.S_DLY.data(),   "S_DLY[nS]/I");
-  runTree_->Branch("S_THR",    runInfo_.S_THR.data(),   "S_THR[nS]/I");
-  runTree_->Branch("S_GW",     runInfo_.S_GW.data(),    "S_GW[nS]/I");
-  runTree_->Fill();
+  if ( fillRunInfo_ ) {
+    // --- Run tree ---
+    runTree_ = new TTree("Run", "Run");
+    runTree_->Branch("RunNumber", &runInfo_.runNumber,    "RunNumber/i");
+
+    runTree_->Branch("nF", &nF_, "nF/I");
+    runTree_->Branch("F_PmtID",  runInfo_.F_PID.data(),   "F_PmtID[nF]/I");
+    runTree_->Branch("F_DLY",    runInfo_.F_DLY.data(),   "F_DLY[nF]/I");
+    runTree_->Branch("F_THR",    runInfo_.F_THR.data(),   "F_THR[nF]/I");
+    runTree_->Branch("F_RL",     runInfo_.F_RL.data(),    "F_RL[nF]/I");
+
+    runTree_->Branch("nS", &nS_, "nS/I");
+    runTree_->Branch("S_PmtID",  runInfo_.S_PID.data(),   "S_PmtID[nS]/I");
+    runTree_->Branch("S_DLY",    runInfo_.S_DLY.data(),   "S_DLY[nS]/I");
+    runTree_->Branch("S_THR",    runInfo_.S_THR.data(),   "S_THR[nS]/I");
+    runTree_->Branch("S_GW",     runInfo_.S_GW.data(),    "S_GW[nS]/I");
+
+    runTree_->Fill();
+  }
 
   // --- Event tree ---
   b_F_PmtID_         = new int[nF_];
