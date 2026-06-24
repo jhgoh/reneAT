@@ -10,7 +10,7 @@ if __name__ == '__main__':
     parser.add_argument('file1', type=str, help='File1')
     parser.add_argument('file2', type=str, help='File2')
     parser.add_argument('-t', '--tree-name', type=str, default='Event', help='TTree name')
-    parser.add_argument('-k', '--skip-missing', type=bool, default=True, help='Skip missing branch')
+    parser.add_argument('-k', '--skip-missing', action=argparse.BooleanOptionalAction, default=True, help='Skip missing branch')
     args = parser.parse_args()
 
     fName1, fName2 = args.file1, args.file2
