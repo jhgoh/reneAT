@@ -20,7 +20,7 @@ public:
     std::vector<int> S_PID, S_DLY, S_THR, S_GW;  // size = nS, per SADC channel
   };
 
-  EventFiller(const std::string& fName, const RunInfo& runInfo, const bool fillRunInfo=false);
+  EventFiller(const std::string& fName, const RunInfo& runInfo);
   ~EventFiller();
 
   void Fill(EventInfo* eFADC, EventInfo* eSADC, FChannelData* fCh, AChannelData* aCh);
@@ -30,8 +30,7 @@ private:
   TTree* runTree_;
   TTree* eventTree_;
 
-  RunInfo runInfo_;  // owned copy; .data() pointers used for Run tree branch booking
-  bool fillRunInfo_; // flag to fill RunInfo or not
+  RunInfo runInfo_;
 
   int nF_, nS_;
 
