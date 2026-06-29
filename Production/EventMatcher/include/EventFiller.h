@@ -27,7 +27,6 @@ public:
 
 private:
   TFile* fout_;
-  TTree* runTree_;
   TTree* eventTree_;
 
   RunInfo runInfo_;
