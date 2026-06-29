@@ -25,7 +25,7 @@ if __name__ == '__main__':
     t.SetBranchStatus("F_Waveform_3", 0)
 
     fout = ROOT.TFile(args.ofName, "RECREATE", "", ROOT.kZSTD)
-    fout.SetCompressionLevel(4)
+    fout.SetCompressionLevel(args.compression_level)
 
     t = t.CloneTree()
     fout.cd()
