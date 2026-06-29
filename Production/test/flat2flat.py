@@ -8,6 +8,7 @@ if __name__ == '__main__':
     parser.add_argument('ifName', type=str, help='Input File Name')
     parser.add_argument('ofName', type=str, help='Output File Name')
     parser.add_argument('-c', '--compression-level', type=int, default=4)
+    parser.add_argument('--drop-channels', default='2,3', help="Comma-separated FADC channel indices to drop (default: 2,3)")
     parser.add_argument('-v', '--verbose', action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
@@ -21,8 +22,10 @@ if __name__ == '__main__':
     import ROOT
     fin = ROOT.TFile(args.ifName)
     t = fin.Get("Event")
-    t.SetBranchStatus("F_Waveform_2", 0)
-    t.SetBranchStatus("F_Waveform_3", 0)
+    for ch in args.drop_channels.split(','):
+        if not ch.isnumeric(): continue
+        ch = int(ch)
+        t.SetBranchStatus(f"F_Waveform_{ch}", 0)
 
     fout = ROOT.TFile(args.ofName, "RECREATE", "", ROOT.kZSTD)
     fout.SetCompressionLevel(args.compression_level)
