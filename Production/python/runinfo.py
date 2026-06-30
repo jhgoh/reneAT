@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import os
-import gzip
 import numpy as np
 
 class RunInfo:
