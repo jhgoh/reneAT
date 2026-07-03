@@ -11,15 +11,17 @@ if __name__ == '__main__':
     parser.add_argument('file2', type=str, help='File2')
     parser.add_argument('-t', '--tree-name', type=str, default='Event', help='TTree name')
     parser.add_argument('-k', '--skip-missing', action=argparse.BooleanOptionalAction, default=True, help='Skip missing branch')
+    parser.add_argument('-q', '--error-only', action=argparse.BooleanOptionalAction, default=False, help='Print errors only')
     args = parser.parse_args()
 
     fName1, fName2 = args.file1, args.file2
     tName = args.tree_name
 
-    print(f"{os.path.basename(sys.argv[0])}: Compare flat trees in two input ROOT files")
-    print(f"  File1 = {fName1}")
-    print(f"  File2 = {fName2}")
-    print()
+    if not args.error_only:
+        print(f"{os.path.basename(sys.argv[0])}: Compare flat trees in two input ROOT files")
+        print(f"  File1 = {fName1}")
+        print(f"  File2 = {fName2}")
+        print()
 
     ## Open files
     f1 = uproot.open(fName1)
@@ -34,32 +36,41 @@ if __name__ == '__main__':
         print()
         sys.exit(1)
 
-    print(f"Checking branch names... ", end="")
+    if not args.error_only:
+        print(f"Checking branch names... ", end="")
     bNames1, bNames2 = t1.keys(), t2.keys()
     if set(bNames1) == set(bNames2):
-        print(f"\u2705 OK, nBranches={len(bNames1)}")
+        if not args.error_only:
+            print(f"\u2705 OK, nBranches={len(bNames1)}")
     else:
-        print(f"\n\u274C\nERROR: Different branch names!!!")
-        print(f"         b1={bNames1}")
-        print(f"         b2={bNames2}")
-        if not args.skip_missing: sys.exit(1)
+        if not args.skip_missing:
+            print(f"\n\u274C\nERROR: Different branch names!!!")
+            print(f"         b1={bNames1}")
+            print(f"         b2={bNames2}")
+            sys.exit(1)
     bNames = set(bNames1).intersection(bNames2)
 
-    print(f"Checking number of events... ", end="")
+    if not args.error_only:
+        print(f"Checking number of events... ", end="")
     n1, n2 = t1.num_entries, t2.num_entries
     if n1 == n2:
-        print(f"\u2705 OK, n={n1}")
+        if not args.error_only:
+            print(f"\u2705 OK, n={n1}")
     else:
         print(f"\n\u274C\nERROR: Different entries n1={n1}, n2={n2}")
         sys.exit(2)
 
-    print(f"Checking branch contents one by one...")
+    diffCode = 0
+    if not args.error_only:
+        print(f"Checking branch contents one by one...")
     for bName in bNames:
-        print(f"Checking branch \"{bName}\"...", end="")
+        if not args.error_only:
+            print(f"Checking branch \"{bName}\"...", end="")
         arr1 = t1[bName].array(library='np')
         arr2 = t2[bName].array(library='np')
         if arr1.shape != arr2.shape:
             print(f"\u274C\nERROR: Different shape! arr1={arr1.shape} arr2={arr2.shape}")
+            diffCode = 3
             continue
         if arr1.dtype != arr2.dtype:
             print(f"\u274C\nERROR: Different object type! arr1={arr1.dtype} arr2={arr2.dtype}", end='')
@@ -75,6 +86,10 @@ if __name__ == '__main__':
             print(f"\u274C\nERROR: Different content! nDiff={diff_mask.sum()}")
             print(f"  different contents in arr1: {arr1[diff_mask]}")
             print(f"  different contents in arr2: {arr2[diff_mask]}")
+            diffCode = 4
             continue
 
-        print(f"\u2705")
+        if not args.error_only:
+            print(f"\u2705")
+
+    sys.exit(diffCode)
