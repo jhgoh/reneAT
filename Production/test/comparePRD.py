@@ -29,12 +29,19 @@ if __name__ == '__main__':
     t1 = f1[tName]
     t2 = f2[tName]
 
+    E_TREE    = 1   # invalid tree
+    E_BRANCH  = 2   # branch name mismatch
+    E_ENTRIES = 4   # entry count mismatch
+    E_SHAPE   = 8   # shape mismatch
+    E_DTYPE   = 16  # dtype mismatch
+    E_CONTENT = 32  # content mismatch
+
     if t1 is None or t2 is None:
         print(f"\u274C\nERROR: Invalid TTree...", end='')
         if t1 is None: print(f"in {fName1}")
         if t2 is None: print(f"in {fName2}")
         print()
-        sys.exit(1)
+        sys.exit(E_TREE)
 
     if not args.error_only:
         print(f"Checking branch names... ", end="")
@@ -47,7 +54,7 @@ if __name__ == '__main__':
             print(f"\n\u274C\nERROR: Different branch names!!!")
             print(f"         b1={bNames1}")
             print(f"         b2={bNames2}")
-            sys.exit(1)
+            sys.exit(E_BRANCH)
     bNames = set(bNames1).intersection(bNames2)
 
     if not args.error_only:
@@ -58,7 +65,7 @@ if __name__ == '__main__':
             print(f"\u2705 OK, n={n1}")
     else:
         print(f"\n\u274C\nERROR: Different entries n1={n1}, n2={n2}")
-        sys.exit(2)
+        sys.exit(E_ENTRIES)
 
     diffCode = 0
     if not args.error_only:
@@ -70,11 +77,11 @@ if __name__ == '__main__':
         arr2 = t2[bName].array(library='np')
         if arr1.shape != arr2.shape:
             print(f"\u274C\nERROR: Different shape! arr1={arr1.shape} arr2={arr2.shape}")
-            diffCode = 3
+            diffCode |= E_SHAPE
             continue
         if arr1.dtype != arr2.dtype:
             print(f"\u274C\nERROR: Different object type! arr1={arr1.dtype} arr2={arr2.dtype}", end='')
-            #continue
+            diffCode |= E_DTYPE
 
         if arr1.dtype == object:
             arr1 = np.stack(arr1)
@@ -86,7 +93,7 @@ if __name__ == '__main__':
             print(f"\u274C\nERROR: Different content! nDiff={diff_mask.sum()}")
             print(f"  different contents in arr1: {arr1[diff_mask]}")
             print(f"  different contents in arr2: {arr2[diff_mask]}")
-            diffCode = 4
+            diffCode |= E_CONTENT
             continue
 
         if not args.error_only:
