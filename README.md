@@ -15,7 +15,11 @@ Production/
 │   ├── logreader.py    # TCB log parser
 │   └── runinfo.py      # Run configuration container
 ├── test/
-│   └── comparePRD.py   # Validate two PRD files are identical
+│   ├── flat2flat.py        # PRD 재압축 및 채널 드롭 변환
+│   ├── comparePRD.py       # 두 PRD 파일의 내용 비교 검증
+│   ├── submit_flat2flat.sh # flat2flat SLURM 배치 제출
+│   ├── run_flat2flat.sh    # flat2flat SLURM 잡 스크립트
+│   └── run_comparePRD.sh   # comparePRD SLURM 잡 스크립트
 ├── RAW -> ...          # Symlink to raw data
 ├── TCBLOG -> ...       # Symlink to TCB log files
 └── PRD/                # Output flat ntuples (or symlink)
@@ -73,15 +77,23 @@ ln -s /store/cpnr-data/RENE/PRD/ PRD
 
 ### Production
 아래와 같이 production을 진행합니다.
-```
+```bash
 mamba activate hep2026.01 ## 로그인 할 때마다.
 export LANG=en_US.UTF-8 ## LANG=C에서 빌드 문제 생기는 경우가 있었음.
 
 cd Production
-./raw2flat.py <RUN_NUMBER> 
+./raw2flat.py <RUN_NUMBER>
 ```
 
 batch job으로 실행하는 경우, 그리고 progress-bar가 필요없는 경우는 `--no-progress` 옵션을 붙여 실행합니다. 자세한 디버깅 메시지가 필요 없으면 `--no-verbose` 옵션을 붙이면 됩니다.
+
+### Size reduction and validation (flat2flat / comparePRD)
+PRD 파일의 크기 축소 및 검증은 `test/` 디렉토리의 스크립트를 사용합니다. SLURM 배치로 제출하는 경우:
+```bash
+cd Production/test
+./submit_flat2flat.sh <RUN_NUMBER>     # 파일 크기 축소 배치 제출
+sbatch run_comparePRD.sh <RUN_NUMBER>  # 두 PRD 파일 내용 비교 검증
+```
 
 ## Troubleshooting
 ### mamba 환경 동작 문제
