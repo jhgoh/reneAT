@@ -12,6 +12,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', '--tree-name', type=str, default='Event', help='TTree name')
     parser.add_argument('-k', '--skip-missing', action=argparse.BooleanOptionalAction, default=True, help='Skip missing branch')
     parser.add_argument('-q', '--error-only', action=argparse.BooleanOptionalAction, default=False, help='Print errors only')
+    parser.add_argument('-c', '--chunk-size', type=int, default=100000, help='Chunk size for large branches (default: 100000)')
     args = parser.parse_args()
 
     fName1, fName2 = args.file1, args.file2
@@ -72,7 +73,32 @@ if __name__ == '__main__':
         print(f"Checking branch contents one by one...")
     for bName in bNames:
         if not args.error_only:
-            print(f"Checking branch \"{bName}\"...", end="")
+            print(f"Checking branch \"{bName}\"...", end="", flush=True)
+
+        # uproot jagged array offset is int32; overflows at 2^31 elements (~4GB for uint16)
+        if t1[bName].uncompressed_bytes > 2**31 or t2[bName].uncompressed_bytes > 2**31:
+            branchOk = True
+            for start in range(0, n1, args.chunk_size):
+                stop = min(start + args.chunk_size, n1)
+                arr1 = np.stack(t1[bName].array(library='np', entry_start=start, entry_stop=stop))
+                arr2 = np.stack(t2[bName].array(library='np', entry_start=start, entry_stop=stop))
+                if arr1.shape != arr2.shape:
+                    print(f"\u274C\nERROR: Different shape! arr1={arr1.shape} arr2={arr2.shape}")
+                    diffCode |= E_SHAPE
+                    branchOk = False
+                    break
+                diff_mask = (arr1 != arr2)
+                if diff_mask.sum() > 0:
+                    print(f"\u274C\nERROR: Different content! nDiff={diff_mask.sum()} (entries {start}-{stop})")
+                    print(f"  different contents in arr1: {arr1[diff_mask]}")
+                    print(f"  different contents in arr2: {arr2[diff_mask]}")
+                    diffCode |= E_CONTENT
+                    branchOk = False
+                    break
+            if branchOk and not args.error_only:
+                print(f"\u2705")
+            continue
+
         arr1 = t1[bName].array(library='np')
         arr2 = t2[bName].array(library='np')
         if arr1.shape != arr2.shape:
