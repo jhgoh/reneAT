@@ -2,6 +2,8 @@
 # Site-specific ROOT environment setup.
 # Sourced by _remote scripts at startup — edit for your site.
 
+export LC_ALL=C
+
 if [ -d /cvmfs/sft.cern.ch/lcg/views ]; then
     # Detect OS and pick matching LCG view
     if [ -f /etc/os-release ]; then
