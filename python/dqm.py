@@ -33,7 +33,7 @@ from prompt import QSUM_EDGES, SADC_EDGES, DT_EDGES, PEAK_EDGES, PED_EDGES, RMS_
 PAIR_WINDOW = (10.0, 200.0)    # starts after the retriggers that follow large pulses (< 10 us)
 MUON_VETO_US = 1000.0
 DEFAULT_FLAGS = {"max_gap_s": 1.0, "rate_drop": 0.5, "ped_shift": 3.0, "rise_shift": 5.0, "noise_max": 1.5,
-                 "rule_mismatch": 0.01, "spe_shift": 0.10}
+                 "rule_mismatch": 0.01, "spe_shift": 0.10, "slot8_max": 0.5}
 PC_PER_ADC_SAMPLE = 0.488e-3 * 2e-9 / 50 * 1e12      # 2 V / 4096 counts, 2 ns, 50 ohm
 E_PC = 1.602176634e-7
 
@@ -260,6 +260,59 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
         fig.suptitle(title + "  -  inner PMTs (FADC)"); fig.tight_layout()
         fig.savefig(os.path.join(out, "fadc.png"), dpi=80); plt.close(fig)
         pages.append("fadc.png")
+
+    # ---------------- FADC sample-slot pattern: even/odd offset (per event) and the 8-slot clock pattern
+    if has_fadc and any(f"slot8_amp_0" in summ[s_].get("fadc", {}) for s_ in good):
+        fig, ax = plt.subplots(2, 3, figsize=(19, 10))
+        freqs = ("62.5", "125", "187.5")
+        for c, col in ((0, "C0"), (1, "C3")):
+            eo = per_sub(lambda x: x.get("fadc", {}).get(f"eo_mean_{c}", np.nan))
+            jit = per_sub(lambda x: x.get("fadc", {}).get(f"eo_jitter_{c}", np.nan))
+            ax[0, 0].plot(tmid, eo, ".", ms=3, color=col, label=f"PMT {'AB'[c]}: run median {np.nanmedian(eo):.2f}")
+            ax[0, 1].plot(tmid, jit, ".", ms=3, color=col, label=f"PMT {'AB'[c]}: run median {np.nanmedian(jit):.2f}")
+            row[f"eo_mean_{c}"] = float(np.nanmedian(eo)) if np.isfinite(eo).any() else None
+            row[f"eo_min_{c}"] = float(np.nanmin(eo)) if np.isfinite(eo).any() else None
+            row[f"eo_max_{c}"] = float(np.nanmax(eo)) if np.isfinite(eo).any() else None
+            row[f"eo_jitter_{c}"] = float(np.nanmedian(jit)) if np.isfinite(jit).any() else None
+            # run mean 8-slot shape, weighted by the number of quiet records per sub-run
+            sh_, wt = [], []
+            for s_ in good:
+                f_ = summ[s_].get("fadc", {})
+                if f"slot8_{c}" in f_:
+                    sh_.append(f_[f"slot8_{c}"]); wt.append(f_.get(f"eo_n_{c}", 1))
+            if sh_:
+                shape = np.average(np.array(sh_), axis=0, weights=np.array(wt, float))
+                F = np.abs(np.fft.rfft(shape)) * 2 / 8
+                row[f"slot8_{c}"] = np.round(shape, 4).tolist()
+                for j, fq in enumerate(freqs):
+                    row[f"slot8_{fq}_{c}"] = float(F[j + 1])
+                ax[0, 2].plot(range(8), shape, "o-", color=col,
+                              label=f"PMT {'AB'[c]}: 62.5/125/187.5 MHz = {F[1]:.2f}/{F[2]:.2f}/{F[3]:.2f}")
+                if max(F[1:4]) > flags_cfg["slot8_max"]:
+                    flags.append(f"PMT {'AB'[c]} clock-synchronous 8-sample pattern {max(F[1:4]):.2f} ADC (> {flags_cfg['slot8_max']})")
+            for j, (fq, ls) in enumerate(zip(freqs, ("-", "--", ":"))):
+                y = per_sub(lambda x: (x.get("fadc", {}).get(f"slot8_amp_{c}") or [np.nan] * 3)[j])
+                ax[1, c].plot(tmid, y, ls, lw=0.9, label=f"{fq} MHz")
+            ax[1, c].set_title(f"PMT {'AB'[c]}: 8-sample pattern per sub-run"); ax[1, c].set_xlabel("hours since run start")
+            ax[1, c].set_ylabel("amplitude [ADC]"); ax[1, c].legend(fontsize=9)
+        ax[0, 0].set_title("even - odd offset (per event, sub-run mean)"); ax[0, 0].set_ylabel("ADC")
+        ax[0, 1].set_title("event-to-event spread of the even/odd offset"); ax[0, 1].set_ylabel("ADC")
+        ax[0, 2].set_title("8-sample pattern after even/odd, run mean (aligned to the 16 ns TCB clock)")
+        ax[0, 2].set_xlabel("sample slot (index + 4 x TCB 16 ns phase) mod 8"); ax[0, 2].set_ylabel("ADC"); ax[0, 2].axhline(0, color="grey", lw=0.5)
+        for a_ in (ax[0, 0], ax[0, 1]):
+            a_.set_xlabel("hours since run start")
+        for a_ in ax[0]:
+            a_.legend(fontsize=9)
+        ax[1, 2].axis("off")
+        ax[1, 2].text(0, 1, "From quiet pedestal windows (samples 0-99) of FADC triggers.\n"
+                      "even/odd: two sample paths of the ADC; changes between runs and\n"
+                      "within a run, so qsum takes it from every event.\n"
+                      "8-sample pattern: what is left after even/odd; locked to the\n"
+                      "16 ns clock and stable within a run (clock pick-up).",
+                      va="top", fontsize=11, family="monospace")
+        fig.suptitle(title + "  -  FADC sample-slot pattern"); fig.tight_layout()
+        fig.savefig(os.path.join(out, "adc.png"), dpi=80); plt.close(fig)
+        pages.append("adc.png")
 
     # ---------------- PMT / FADC front end: single p.e., effective threshold, trigger rule, settings
     if has_fadc:
@@ -545,7 +598,9 @@ TREND_KEYS = ["dataset", "type", "source", "livetime", "rate_both_ab", "rate_bot
               "peak_median_0", "peak_median_1", "qsum_median_0", "qsum_median_1", "qgm_median",
               "log_ab_median", "pedeo_median_0", "pedeo_median_1", "rise_median_0", "rise_median_1",
               "width_median_0", "width_median_1", "prepulse_frac_0", "prepulse_frac_1",
-              "spe_pc_0", "spe_pc_1", "effthr_even_0", "effthr_odd_0", "effthr_even_1", "effthr_odd_1", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
+              "spe_pc_0", "spe_pc_1", "effthr_even_0", "effthr_odd_0", "effthr_even_1", "effthr_odd_1",
+              "eo_mean_0", "eo_mean_1", "eo_jitter_0", "eo_jitter_1", "slot8_62.5_0", "slot8_125_0", "slot8_187.5_0",
+              "slot8_62.5_1", "slot8_125_1", "slot8_187.5_1", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
 
 
 def trend(base=None):
@@ -578,11 +633,13 @@ def trend(base=None):
               ("even - odd offset [ADC] / random noise", ["pedeo_median_0", "pedeo_median_1", "pedrms_median_0", "pedrms_median_1"], False),
               ("pulse rise [samples] / Qsum/height", ["rise_median_0", "rise_median_1", "width_median_0", "width_median_1"], False),
               ("single p.e. peak [pC] (in situ)", ["spe_pc_0", "spe_pc_1"], False),
+              ("even - odd offset [ADC] (run median)", ["eo_mean_0", "eo_mean_1"], False),
+              ("8-sample clock pattern [ADC]", ["slot8_62.5_0", "slot8_125_0", "slot8_187.5_0", "slot8_62.5_1", "slot8_125_1", "slot8_187.5_1"], False),
               ("effective threshold [ADC]", ["effthr_even_0", "effthr_odd_0", "effthr_even_1", "effthr_odd_1"], False),
               ("saturated fraction", ["sat_frac_0", "sat_frac_1"], False),
               ("delayed pairs per day", ["pairs_per_day", "pairs_excess_per_day"], False),
               ("livetime [h] / flags", ["livetime", "n_flags"], False)]
-    fig, ax = plt.subplots(5, 3, figsize=(18, 19), sharex=True)
+    fig, ax = plt.subplots(6, 3, figsize=(18, 23), sharex=True)
     for a, (t, keys, logy) in zip(ax.flat, panels):
         for k in keys:
             y = np.array([r.get(k, np.nan) if r.get(k) is not None else np.nan for r in rows], float)

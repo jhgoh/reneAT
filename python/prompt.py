@@ -132,7 +132,8 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
                     "mult": np.zeros(nch + 1, np.int64), "pair": np.zeros((nch, nch), np.int64)}
 
         fadc_rows = []
-        mon = {c: {"spe": np.zeros(len(SPE_EDGES) - 1, np.int64), "n": 0, "rule_on_bit_off": 0,
+        mon = {c: {"slot_sum": np.zeros(8), "slot_n": np.zeros(8), "eo_sum": 0.0, "eo_sum2": 0.0, "eo_n": 0,
+                   "spe": np.zeros(len(SPE_EDGES) - 1, np.int64), "n": 0, "rule_on_bit_off": 0,
                    "rule_off_bit_on": 0, "eff_even": [], "eff_odd": [], "board_ped": set()} for c in channels}
         for start in range(0, n, chunk):
             stop = min(n, start + chunk)
@@ -172,12 +173,32 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
             wa = tree.arrays([f"F_Waveform_{c}" for c in channels], entry_start=w0, entry_stop=w1, library="ak")
             row = {"Entry": start + sel}
             ft_sel = pieces["ftrig"][-1][sel]
+            tcb_sel = ak.to_numpy(a["TCBTRGTime"])[sel].astype(np.int64)
             bped = ak.to_numpy(a["F_Pedestal"])[sel] if has_fped else None
             for c in channels:
                 w = prd.waveform(wa, c)[sel - (w0 - start)]
                 r = compute_channel(w, thr[c] if c < len(thr) else 80.0, cfg)
                 m = mon[c]
                 m["n"] += len(w)
+                # FADC sample-slot pedestal pattern from quiet pedestal windows (samples ped1..ped2):
+                # even/odd offset per event (mean, spread) and the 8-slot shape left after it
+                q = r["ped_max"] < SPE_MIN_HEIGHT
+                if q.any():
+                    p1, p2 = cfg.ped1, cfg.ped2
+                    idx = np.arange(p1, p2)
+                    pedv = np.where((idx % 2 == 0)[None, :], (r["ped"] + r["ped_eo"] / 2)[q, None],
+                                    (r["ped"] - r["ped_eo"] / 2)[q, None])
+                    res8 = w[q, p1:p2] - pedv
+                    # the 8-sample pattern is locked to the 16 ns TCB clock: a record whose trigger time is an
+                    # odd multiple of 8 ns starts 4 samples later in the pattern, so align by that phase
+                    shift = 4 * ((tcb_sel[q] // 8) % 2)
+                    slots = (idx[None, :] + shift[:, None]) % 8
+                    for sl in range(8):
+                        msk = slots == sl
+                        m["slot_sum"][sl] += res8[msk].sum()
+                        m["slot_n"][sl] += msk.sum()
+                    eo = r["ped_eo"][q]
+                    m["eo_sum"] += eo.sum(); m["eo_sum2"] += (eo * eo).sum(); m["eo_n"] += len(eo)
                 m["spe"] += _hist(_single_pulses(w[r["ped_max"] >= SPE_MIN_HEIGHT]), SPE_EDGES)
                 if bped is not None and c < bped.shape[1] and c < ft_sel.shape[1]:
                     # FADC discriminator: a raw sample >= board pedestal + THR + 1 sets the channel bit
@@ -271,6 +292,16 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
         for c in channels:
             m = mon[c]
             fs[f"spe_{c}"] = m["spe"].tolist()
+            if m["eo_n"]:
+                sl = m["slot_sum"] / np.maximum(m["slot_n"], 1)
+                sl = sl - np.where(np.arange(8) % 2 == 0, sl[0::2].mean(), sl[1::2].mean())
+                F = np.fft.rfft(sl) * 2 / 8                           # 8-slot shape -> 62.5, 125, 187.5 MHz
+                fs[f"slot8_{c}"] = sl.round(4).tolist()
+                fs[f"slot8_amp_{c}"] = [float(abs(F[1])), float(abs(F[2])), float(abs(F[3]))]
+                mu = m["eo_sum"] / m["eo_n"]
+                fs[f"eo_mean_{c}"] = float(mu)
+                fs[f"eo_jitter_{c}"] = float(np.sqrt(max(m["eo_sum2"] / m["eo_n"] - mu * mu, 0)))
+                fs[f"eo_n_{c}"] = int(m["eo_n"])
             fs[f"rule_n_{c}"] = m["n"]
             fs[f"rule_on_bit_off_{c}"] = m["rule_on_bit_off"]
             fs[f"rule_off_bit_on_{c}"] = m["rule_off_bit_on"]
