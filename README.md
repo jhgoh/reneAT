@@ -27,6 +27,9 @@ reneat overview --set Cs137 data_4185.root data_4099.root mc_Cs137.root \
 | `python/qsum.py` | pedestal, Qsum, Qtail, fired bin, 펄스 높이·위치 |
 | `python/ntuple.py` | 트리거별 feature ntuple. 데이터는 livetime, MC는 생성 사건 수와 truth(Equench, NPE 등)를 함께 저장 |
 | `python/compare.py` | 라이브타임 정규화 배경 빼기, MC 스케일 fit, A/B 비, 평균 펄스 모양 |
+| `python/prompt.py` | sub-run 단위 prompt 처리 (FADC feature 트리 + 점검·히스토그램 요약) |
+| `python/dqm.py` | 런 단위 DQM 페이지, 런 간 trend |
+| `python/pipeline.py` | 런 전체 병렬 처리, SLURM 제출, 전송 끝난 런 찾기(`watch`) |
 
 - 데이터 livetime = 읽은 이벤트들의 TCBTRGTime 경과 시간. TCBTRGTime은 ns 단위이고 2^24 µs(16.78 s)마다
   되감기므로 이를 풀어서 더합니다 (`prd.TCBClock`). TrgNum은 긴 런 안에서 다시 시작하고(예: 4099),
@@ -34,6 +37,34 @@ reneat overview --set Cs137 data_4185.root data_4099.root mc_Cs137.root \
 - 경로는 환경변수 `RENE_PRD`, `RENE_DB`, `RENE_CONFIG`로 바꿀 수 있습니다 (기본: `/store/cpnr-data/RENE/...`).
 - 파이썬에서 직접 쓸 때는 `setup.sh` 후 `import ntuple, compare` 처럼 불러옵니다.
 - Qsum 정의(pedestal 0–99, 신호 100–349, tail 300–349 샘플)는 W.J. Lee의 ChargeSum을 따릅니다 (`qsum.QSumConfig`).
+
+### Prompt 처리와 data quality monitoring
+PRD 런 전송이 끝나면 런의 모든 엔트리를 한 번 읽어(`prompt`) sub-run마다 결과를 남기고,
+이를 모아 런 단위 DQM 페이지와 런 간 trend를 만듭니다(`dqm`, `trend`). 출력 위치는 `--out` 또는 `RENE_PROMPT`.
+
+```bash
+export RENE_PROMPT=/path/to/prompt              # 출력 위치
+reneat prompt 4370 -j 24                        # 로컬 병렬 처리 (하루 런: FADC 런 ~3분, veto 런 ~10분)
+reneat dqm 4370                                 # $RENE_PROMPT/dqm/004370/index.html, 그리고 trend 갱신
+reneat submit 4370                              # SLURM: prompt array job -> dqm + trend job
+reneat watch --first 4370 --mode slurm          # 전송이 끝난 런을 찾아 처리 (cron 용)
+reneat watch --first 4370 --dry-run             # 처리할 런만 보기
+```
+
+- `prompt`: `<out>/<run>/prompt_<run>.<sub>.root`. 출력이 이미 있는 sub-run은 건너뜁니다 (`--overwrite`).
+  - `FADC` 트리: FADC 트리거마다 QSum feature(A, B), 포화 여부, `Qgm = sqrt(QsumA*QsumB)`,
+    같은 엔트리의 veto 채널 수, 직전 FADC 트리거 / veto 히트 / muon-like(EventType 3)까지의 시간 [us].
+  - `summary` (JSON): 엔트리 수, EventType별 개수, TCB 시계와 TrgNum 점검, 1초 단위 계수,
+    FADC pedestal·노이즈·펄스 위치·Qsum 히스토그램, SADC 채널별 히트 수·스펙트럼·baseline·다중도·동시 히트.
+  - 읽을 수 없는 파일은 오류만 기록하고 넘어갑니다.
+- `dqm`: `overview.png`(계수율, 시계·트리거 번호 점검, 런 정보), `fadc.png`, `veto.png`, `prompt.png`(시간 상관, delayed 쌍),
+  `summary.json`, `index.html`. 처리되지 않은 sub-run, 읽을 수 없는 파일, 1초 이상 트리거 공백, 계수율 급감 등을 flag로 표시합니다.
+- `trend`: `<out>/dqm/trend.csv`, `trend.png`, 전체 런 표 `index.html`.
+- `watch`: PRD 파일이 `--min-age`(기본 2시간) 동안 바뀌지 않았고 카탈로그에 종료 시각이 있는 런 가운데
+  DQM이 없거나 PRD보다 오래된 런을 처리합니다. cron 예:
+  `0 * * * * bash -lc 'mamba activate hep2026.01; source /path/to/reneAT/setup.sh; RENE_PROMPT=/path/to/prompt reneat watch --first 4370 --mode slurm' >> watch.log 2>&1`
+- 시간: 런 안의 시간은 TCB 경과 시간이고, sub-run 사이는 앞 sub-run 마지막과 다음 sub-run 첫 엔트리의 TCB 차이(16.78 s 주기)로 잇습니다.
+  veto 채널은 SADC 채널 번호(1부터)와 `S_PmtID`로만 표시합니다.
 
 > PRD 제작은 별도의 공식 production 코드로 이루어집니다. 아래의 `Production/` 내용은 이전 자체 제작 도구로, 정리 예정입니다.
 

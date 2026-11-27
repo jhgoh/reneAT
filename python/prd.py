@@ -112,19 +112,27 @@ class TCBClock:
         self.prev = None
         self.elapsed_ns = 0.0
         self.n_wrap = 0
+        self.n_back = 0              # backward steps that are not a wrap (out-of-order entries)
 
     def add(self, t):
+        self.times(t)
+
+    def times(self, t):
+        """Add entries and return their elapsed time [ns] since the first entry ever added."""
         t = np.asarray(t, dtype=np.float64)
         if len(t) == 0:
-            return
-        if self.prev is not None:
-            t = np.r_[self.prev, t]
+            return np.zeros(0)
+        first = self.prev is None
+        t = np.r_[t[0] if first else self.prev, t]
         d = np.diff(t)
         wrap = d < -0.5 * TCB_WRAP_NS
+        self.n_back = getattr(self, "n_back", 0) + int(((d < 0) & ~wrap).sum())
         d = np.where(wrap, d + TCB_WRAP_NS, np.maximum(d, 0.0))
-        self.elapsed_ns += float(d.sum())
+        el = self.elapsed_ns + np.cumsum(d)
+        self.elapsed_ns = float(el[-1])
         self.n_wrap += int(wrap.sum())
         self.prev = t[-1]
+        return el
 
     @property
     def seconds(self):

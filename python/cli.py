@@ -211,6 +211,49 @@ def cmd_source_compare(a):
     print(f"[reneat] -> {a.output}")
 
 
+def _subruns(spec):
+    """'0:100' or '3,5,9' -> list of ints."""
+    if not spec:
+        return None
+    if ":" in spec:
+        a, b = spec.split(":")
+        return list(range(int(a), int(b)))
+    return [int(x) for x in spec.split(",")]
+
+
+def cmd_prompt(a):
+    import pipeline
+    for run in a.runs:
+        n, err = pipeline.prompt_run(run, a.out, a.jobs, _subruns(a.subruns), a.task, a.ntask, a.overwrite)
+        print(f"[reneat] run {run}: {n} sub-runs processed, {err} unreadable")
+
+
+def cmd_dqm(a):
+    import dqm
+    for run in a.runs:
+        row = dqm.run_report(run, a.out, pairs=not a.no_pairs)
+        print(f"[reneat] run {run}: {dqm.dqm_dir(run, a.out)}/index.html, flags: {row['flags'] or 'none'}")
+    if not a.no_trend:
+        dqm.trend(a.out)
+
+
+def cmd_trend(a):
+    import dqm
+    rows = dqm.trend(a.out)
+    print(f"[reneat] {len(rows)} runs -> {dqm.dqm_dir(None, a.out)}/index.html")
+
+
+def cmd_submit(a):
+    import pipeline
+    for run in a.runs:
+        print(f"[reneat] run {run}: prompt array job and dqm job", pipeline.submit(run, a.out, a.ntask, a.partition))
+
+
+def cmd_watch(a):
+    import pipeline
+    pipeline.watch(a.out, a.first, a.min_age, a.mode, a.jobs, a.ntask, a.partition, a.dry_run)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="reneat")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -259,6 +302,46 @@ def main(argv=None):
     p.add_argument("--title")
     p.add_argument("-o", "--output", required=True)
     p.set_defaults(func=cmd_source_compare)
+
+    out_help = "output directory of prompt / dqm (default: $RENE_PROMPT)"
+    p = sub.add_parser("prompt", help="read every entry of the runs once -> per-sub-run prompt outputs")
+    p.add_argument("runs", nargs="+", type=int)
+    p.add_argument("--out", help=out_help)
+    p.add_argument("-j", "--jobs", type=int, default=8, help="parallel processes")
+    p.add_argument("--subruns", help="e.g. 0:100 or 3,5,9")
+    p.add_argument("--task", type=int, help="process only files task, task+ntask, ... (batch arrays)")
+    p.add_argument("--ntask", type=int, default=1)
+    p.add_argument("--overwrite", action="store_true")
+    p.set_defaults(func=cmd_prompt)
+
+    p = sub.add_parser("dqm", help="run-level data quality pages from the prompt outputs")
+    p.add_argument("runs", nargs="+", type=int)
+    p.add_argument("--out", help=out_help)
+    p.add_argument("--no-pairs", action="store_true", help="skip the delayed-pair search (no FADC table read)")
+    p.add_argument("--no-trend", action="store_true")
+    p.set_defaults(func=cmd_dqm)
+
+    p = sub.add_parser("trend", help="trend plots and run table over all DQM summaries")
+    p.add_argument("--out", help=out_help)
+    p.set_defaults(func=cmd_trend)
+
+    p = sub.add_parser("submit", help="SLURM: prompt array job + dqm job per run")
+    p.add_argument("runs", nargs="+", type=int)
+    p.add_argument("--out", help=out_help)
+    p.add_argument("--ntask", type=int, default=32)
+    p.add_argument("--partition")
+    p.set_defaults(func=cmd_submit)
+
+    p = sub.add_parser("watch", help="process runs whose PRD transfer has finished (for cron)")
+    p.add_argument("--out", help=out_help)
+    p.add_argument("--first", type=int, help="ignore runs below this")
+    p.add_argument("--min-age", type=float, default=2.0, help="hours without new PRD files before a run counts as complete")
+    p.add_argument("--mode", choices=["local", "slurm"], default="local")
+    p.add_argument("-j", "--jobs", type=int, default=16)
+    p.add_argument("--ntask", type=int, default=32)
+    p.add_argument("--partition")
+    p.add_argument("--dry-run", action="store_true", help="only list the ready runs")
+    p.set_defaults(func=cmd_watch)
 
     a = ap.parse_args(argv)
     a.func(a)
