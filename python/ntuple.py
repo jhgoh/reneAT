@@ -71,6 +71,9 @@ def make(inputs, cfg=None, channels=(0, 1), fadc_only=True, max_events=None,
     mc = prd.is_mc(files[0])
 
     branches = ["TrgNum", "EventType", "TCBTRGTime", "F_THR"] + [f"F_Waveform_{c}" for c in channels]
+    with uproot.open(files[0]) as f0:
+        if "F_Triggered" in f0["Event"]:
+            branches.append("F_Triggered")
     if mc:
         branches += ["MCRun", "MCEvent"]
 
@@ -110,6 +113,10 @@ def make(inputs, cfg=None, channels=(0, 1), fadc_only=True, max_events=None,
         cols["TrgNum"].append(trg[sel])
         cols["EventType"].append(et[sel])
         cols["TCBTRGTime"].append(ak.to_numpy(arr["TCBTRGTime"])[sel])
+        if "F_Triggered" in arr.fields:
+            ftr = ak.to_numpy(arr["F_Triggered"])[sel]
+            for c in channels:
+                cols[f"FTrig_{c}"].append(ftr[:, c].astype(np.int32))
         for c in channels:
             w = prd.waveform(arr[sel], c)
             r = compute_channel(w, thr[c] if c < len(thr) else 80.0, cfg)

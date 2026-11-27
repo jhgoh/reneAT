@@ -150,6 +150,15 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
            "rate_fadc_only": float(np.nansum(et_n["1"]) / livetime) if livetime else 0.0,
            "rate_sadc_only": float(np.nansum(et_n["2"]) / livetime) if livetime else 0.0,
            "rate_both": float(np.nansum(et_n["3"]) / livetime) if livetime else 0.0}
+    if livetime:
+        n_all = float(np.nansum(per_sub(lambda x: x["n_read"])))
+        row["rate_both_ab"] = float(np.nansum(per_sub(lambda x: x.get("et3_ab", np.nan))) / livetime)
+        row["rate_both_single"] = float(np.nansum(per_sub(lambda x: x.get("et3_single", np.nan))) / livetime)
+        dtmin = per_sub(lambda x: x.get("dt_min_us") if x.get("dt_min_us") is not None else np.nan)
+        row["dt_min_us"] = float(np.nanmin(dtmin)) if np.isfinite(dtmin).any() else None
+        # dead time: every recorded entry blocks the next for about dt_min; skipped trigger numbers were lost
+        row["dead_frac_est"] = n_all / livetime * row["dt_min_us"] * 1e-6 if row["dt_min_us"] else None
+        row["trgnum_skip_frac"] = float(np.nansum(per_sub(lambda x: x["trgnum_skip"])) / max(n_all, 1))
 
     os.makedirs(dqm_dir(run, base), exist_ok=True)
     out = dqm_dir(run, base)
@@ -377,6 +386,9 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
            f"PRD sub-runs {len(prd_subs)}, processed {len(subs)}, unreadable {len(errors)}",
            f"TCB livetime {livetime:.0f} s ({livetime / 3600:.2f} h), catalog tfadc {info.get('tfadc')}",
            f"entries {int(np.nansum(per_sub(lambda x: x['n_read'])))}, catalog nfadc {info.get('nfadc')} nsadc {info.get('nsadc')}",
+           f"FADC+SADC entries: A AND B {row.get('rate_both_ab', 0):.2f} Hz, one channel only {row.get('rate_both_single', 0):.2f} Hz",
+           f"min entry spacing {row.get('dt_min_us')} us, dead fraction ~{100 * (row.get('dead_frac_est') or 0):.2f}%, "
+           f"skipped TrgNum {100 * row.get('trgnum_skip_frac', 0):.2f}% of entries",
            "", "flags:"] + ([f"  - {f}" for f in flags] or ["  none"])
     a.text(0, 1, "\n".join(txt), va="top", family="monospace", fontsize=9, wrap=True)
     fig.suptitle(title); fig.tight_layout(); fig.savefig(os.path.join(out, "overview.png"), dpi=80); plt.close(fig)
@@ -410,7 +422,7 @@ def _fmt(v):
     return str(v)
 
 
-TREND_KEYS = ["dataset", "type", "source", "livetime", "rate_fadc_only", "rate_both", "rate_sadc_only", "veto_rate_total",
+TREND_KEYS = ["dataset", "type", "source", "livetime", "rate_both_ab", "rate_both_single", "dead_frac_est", "trgnum_skip_frac", "rate_fadc_only", "rate_both", "rate_sadc_only", "veto_rate_total",
               "ped_median_0", "ped_median_1", "pedrms_median_0", "pedrms_median_1",
               "peak_median_0", "peak_median_1", "qsum_median_0", "qsum_median_1", "qgm_median",
               "log_ab_median", "pedeo_median_0", "pedeo_median_1", "rise_median_0", "rise_median_1",

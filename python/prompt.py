@@ -9,6 +9,7 @@ One output file per sub-run, ``<out>/<run:06d>/prompt_<run:06d>.<sub:05d>.root``
                   the QSum features of PMT A and B (``_0``, ``_1``; see ntuple.FEATURES),
                   Sat_c (waveform reaches the ADC limit), Qgm = sqrt(Qsum_0 * Qsum_1),
                   NVeto (SADC channels over threshold in the same entry),
+                  FTrig_0/1 (FADC channel trigger bits; EventType 3 can have only one of them),
                   DtPrevFADC, DtPrevVeto, DtPrevMuon [us] to the previous FADC trigger,
                   the previous entry with any SADC channel over threshold, and the previous
                   EventType-3 entry (inner + veto) in the same sub-run; -1 if none yet.
@@ -87,9 +88,11 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
 
     n = tree.num_entries
     has_sadc = "S_Triggered" in tree
-    base_br = ["TrgNum", "EventType", "TCBTRGTime"] + (["S_Triggered", "S_ADC"] if has_sadc else [])
+    has_ftrig = "F_Triggered" in tree
+    base_br = (["TrgNum", "EventType", "TCBTRGTime"] + (["F_Triggered"] if has_ftrig else [])
+               + (["S_Triggered", "S_ADC"] if has_sadc else []))
     clock = prd.TCBClock()
-    pieces = {k: [] for k in ("trg", "et", "t", "nveto")}
+    pieces = {k: [] for k in ("trg", "et", "t", "nveto", "ftrig")}
     sadc = None
     try:
         first = tree.arrays(["F_THR"] + (["S_THR", "S_PmtID"] if has_sadc else []), entry_stop=1, library="ak")
@@ -111,6 +114,11 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
             pieces["trg"].append(ak.to_numpy(a["TrgNum"]).astype(np.int64))
             pieces["et"].append(et)
             pieces["t"].append(clock.times(ak.to_numpy(a["TCBTRGTime"])))
+            if has_ftrig:
+                pieces["ftrig"].append(ak.to_numpy(a["F_Triggered"])[:, :2].astype(np.int8))
+            else:                                   # no trigger bits (old files): EventType 1/3 = both
+                both = ((et == prd.ET_FADC) | (et == prd.ET_BOTH)).astype(np.int8)
+                pieces["ftrig"].append(np.stack([both, both], axis=1))
             if sadc is not None:
                 trig = ak.to_numpy(a["S_Triggered"]).astype(bool)
                 adc = ak.to_numpy(a["S_ADC"]).astype(np.float64)
@@ -151,6 +159,7 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
     et = np.concatenate(pieces["et"]) if pieces["et"] else np.zeros(0, np.int32)
     t = np.concatenate(pieces["t"]) if pieces["t"] else np.zeros(0)
     nveto = np.concatenate(pieces["nveto"]) if pieces["nveto"] else np.zeros(0, np.int64)
+    ftrig = np.concatenate(pieces["ftrig"]) if pieces["ftrig"] else np.zeros((0, 2), np.int8)
     n_read = len(et)
 
     # ---- FADC table with the time / veto context of each trigger
@@ -164,6 +173,8 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
                 **{k: v for k, v in cols.items() if k != "Entry"}}
         cols["Qgm"] = np.sqrt(np.clip(cols["Qsum_0"], 0, None) * np.clip(cols["Qsum_1"], 0, None)).astype(np.float32)
         cols["NVeto"] = nveto[idx].astype(np.int32)
+        cols["FTrig_0"] = ftrig[idx, 0].astype(np.int32)       # FADC channel trigger bits (F_Triggered)
+        cols["FTrig_1"] = ftrig[idx, 1].astype(np.int32)
         cols["DtPrevFADC"] = _dt_prev(t, fadc_mask, idx).astype(np.float32)
         cols["DtPrevVeto"] = _dt_prev(t, nveto > 0, idx).astype(np.float32)
         cols["DtPrevMuon"] = _dt_prev(t, et == prd.ET_BOTH, idx).astype(np.float32)
@@ -178,6 +189,10 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
     summ.update({
         "n_entries": int(n), "n_read": int(n_read), "eventtype": et_counts,
         "duration": dur, "tcb_wraps": clock.n_wrap, "tcb_backward": clock.n_back,
+        # EventType 3 (FADC + SADC) does not always mean A AND B fired: split it by the trigger bits
+        "et3_ab": int(((et == prd.ET_BOTH) & (ftrig[:, 0] == 1) & (ftrig[:, 1] == 1)).sum()) if n_read else 0,
+        "et3_single": int(((et == prd.ET_BOTH) & ((ftrig[:, 0] + ftrig[:, 1]) == 1)).sum()) if n_read else 0,
+        "dt_min_us": float(np.diff(t).min() * 1e-3) if n_read > 1 else None,
         "tcb_first": None, "max_gap": float(dt_all.max() * 1e-6) if len(dt_all) else 0.0,
         "trgnum_first": int(trg[0]) if n_read else None, "trgnum_last": int(trg[-1]) if n_read else None,
         "trgnum_dup": int((d_trg == 0).sum()), "trgnum_back": int((d_trg < 0).sum()),
