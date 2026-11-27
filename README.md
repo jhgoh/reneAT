@@ -1,6 +1,42 @@
 # reneAT: RENE data analysis tools
 A lightweight production and analysis tools for RENE experiment
 
+## 분석 도구 `python/` (데이터·MC 공통)
+공식 PRD 파일(데이터)과 renesim이 만드는 PRD 형식 MC를 **같은 코드**로 읽고 재구성합니다.
+데이터와 MC가 같은 정의(`qsum.compute_channel`)를 거치므로 바로 겹쳐 볼 수 있습니다.
+
+```bash
+mamba activate hep2026.01
+source /path/to/reneAT/setup.sh          # PYTHONPATH(python/), PATH(bin/) 설정
+
+reneat runs --source Cs137 --first 4100 --last 4240         # 런 카탈로그 조회 (bad run 제외)
+reneat ntuple 4185 -o data_4185.root --max-events 400000      # 데이터 런 -> feature ntuple
+reneat ntuple 'mc/prd_src_Cs137_*.root' -o mc_Cs137.root      # MC 파일 -> 같은 형식
+reneat source-compare --src data_4185.root --bkg 4063 --mc mc_Cs137.root -o cs137.png   # MC 스케일 fit
+
+# 여러 선원을 한 장에: 배경 뺀 데이터 vs 생성한 그대로의 MC (스케일 없이 면적만 맞춤)
+reneat overview --set Cs137 data_4185.root data_4099.root mc_Cs137.root \
+                --set AmBe  data_4223.root data_4237.root - \
+                --logy AmBe -o overview.png
+```
+
+| 모듈 | 내용 |
+|------|------|
+| `python/prd.py` | PRD 파일 찾기(`run_files`), 청크 단위 읽기, 채널 맵 (ch0 = PMT A, ch1 = PMT B) |
+| `python/catalog.py` | DAQ 런 카탈로그(sqlite, 읽기 전용), bad run 목록, 선원 이름 파싱 |
+| `python/qsum.py` | pedestal, Qsum, Qtail, fired bin, 펄스 높이·위치 |
+| `python/ntuple.py` | 트리거별 feature ntuple. 데이터는 livetime, MC는 생성 사건 수와 truth(Equench, NPE 등)를 함께 저장 |
+| `python/compare.py` | 라이브타임 정규화 배경 빼기, MC 스케일 fit, A/B 비, 평균 펄스 모양 |
+
+- 데이터 livetime = 읽은 이벤트들의 TCBTRGTime 경과 시간. TCBTRGTime은 ns 단위이고 2^24 µs(16.78 s)마다
+  되감기므로 이를 풀어서 더합니다 (`prd.TCBClock`). TrgNum은 긴 런 안에서 다시 시작하고(예: 4099),
+  카탈로그 `nfadc`는 PRD 이벤트 수와 다를 수 있어(예: 4185) 쓰지 않습니다.
+- 경로는 환경변수 `RENE_PRD`, `RENE_DB`, `RENE_CONFIG`로 바꿀 수 있습니다 (기본: `/store/cpnr-data/RENE/...`).
+- 파이썬에서 직접 쓸 때는 `setup.sh` 후 `import ntuple, compare` 처럼 불러옵니다.
+- Qsum 정의(pedestal 0–99, 신호 100–349, tail 300–349 샘플)는 W.J. Lee의 ChargeSum을 따릅니다 (`qsum.QSumConfig`).
+
+> PRD 제작은 별도의 공식 production 코드로 이루어집니다. 아래의 `Production/` 내용은 이전 자체 제작 도구로, 정리 예정입니다.
+
 RENE실험 데이터 분석을 위하여 RAW데이터로부터 flat ntuple을 생성합니다.
 RENE실험의 RAW데이터 형식은 CUPDAQ를 기반으로 하며, FADC와 SADC 파일로 나뉘어 생성됩니다.
 데이터 분석의 편의성을 위하여 이를 하나로 합치고, flat ntuple형식으로 변환합니다.
