@@ -1,0 +1,6 @@
+# Copy to site.sh (ignored by git) and fill in; setup.sh sources it.
+# Offline good-run sheet (Google Sheets URL or a short link to it); `reneat runsheet --update` refreshes the cache.
+export RENE_RUNSHEET=${RENE_RUNSHEET:-https://docs.google.com/spreadsheets/d/<sheet-id>}
+# Optional overrides
+# export RENE_PROMPT=/path/to/prompt          # prompt / DQM output
+# export RENE_RUNSHEET_CACHE=/path/to/cache   # default <reneAT>/cache/runsheet

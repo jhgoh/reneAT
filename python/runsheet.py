@@ -4,7 +4,7 @@ The offline good-run sheet (Google Sheets): one tab per dataset with one row per
 run ranges. Read through its public CSV export and cached locally, so analysis jobs on
 nodes without internet use the last downloaded copy.
 
-    RENE_RUNSHEET        sheet URL (setup.sh sets the default; a bit.ly link works too)
+    RENE_RUNSHEET        sheet URL (set in site.sh, kept out of git; a short link works too)
     RENE_RUNSHEET_CACHE  cache directory (default <reneAT>/cache/runsheet, not in git)
 
 ``RunSheet()[run]`` gives a dict with the sheet columns as written plus ``dataset`` and
@@ -48,7 +48,7 @@ def update(url=None, cache=None, verbose=True):
     """Download every tab as CSV into the cache and rebuild runs.json."""
     url = url or os.environ.get("RENE_RUNSHEET")
     if not url:
-        raise RuntimeError("set RENE_RUNSHEET (source setup.sh) to the run sheet URL")
+        raise RuntimeError("set RENE_RUNSHEET to the run sheet URL (in <reneAT>/site.sh, see site.sh.example)")
     cache = cache or CACHE
     os.makedirs(cache, exist_ok=True)
     sid = _sheet_id(url)
