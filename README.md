@@ -72,6 +72,14 @@ reneat watch --first 4370 --dry-run             # 처리할 런만 보기
 - 시간: 런 안의 시간은 TCB 경과 시간이고, sub-run 사이는 앞 sub-run 마지막과 다음 sub-run 첫 엔트리의 TCB 차이(16.78 s 주기)로 잇습니다.
   veto 채널은 SADC 채널 번호(1부터)와 `S_PmtID`로만 표시합니다.
 
+### 프롬프트 분석 `analysis/`
+LED, 선원, veto 테스트처럼 런 종류마다 보는 변수가 다르고 그 결과로 세팅·보정값을 정하는 분석은 `analysis/<종류>/`에 둡니다.
+모든 런에 똑같이 만드는 그림은 DQM에 둡니다. 자세한 구분은 `analysis/README.md`, `doc/dqm_plan.md`.
+
+```bash
+analysis/led/gain.py --dataset Y2026A --out DIR   # LED HV 스캔: gain vs HV, 운전 HV gain
+```
+
 ### 런 정보: offline good-run 시트
 Google 시트(데이터셋 탭마다 런별 Source, Detector, HV, THR, Description, Data issue)를 공개 CSV로 받아 로컬에 캐시합니다.
 주소는 `RENE_RUNSHEET`(git에 넣지 않는 `site.sh`에 적음; `site.sh.example`을 복사해서 씀), 캐시는 `RENE_RUNSHEET_CACHE`(기본 reneAT 안의 `cache/runsheet`, git에는 넣지 않음).
