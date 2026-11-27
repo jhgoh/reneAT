@@ -28,11 +28,13 @@ def _qsum_args(ap):
     g.add_argument("--tail-off", type=int, default=15)
     g.add_argument("--ped-mode", choices=["parity", "single"], default="parity",
                    help="parity: separate pedestal for even and odd samples (FADC sample-path offset)")
+    g.add_argument("--ped-reject", type=float, default=None, metavar="K",
+                   help="average only pedestal samples within K sigma (MAD) of the median (random/veto triggers)")
 
 
 def _qsum_cfg(a):
     return QSumConfig(ped1=a.ped1, ped2=a.ped2, sig1=a.sig1, sig_len=a.sig_len,
-                      tail_mode=a.tail_mode, tail1=a.tail1, tail_off=a.tail_off, ped_mode=a.ped_mode)
+                      tail_mode=a.tail_mode, tail1=a.tail1, tail_off=a.tail_off, ped_mode=a.ped_mode, ped_reject=a.ped_reject)
 
 
 def cmd_ntuple(a):

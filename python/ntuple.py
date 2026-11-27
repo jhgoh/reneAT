@@ -29,7 +29,7 @@ import uproot
 import prd
 from qsum import QSumConfig, compute_channel
 
-FEATURES = {"ped": "Ped", "ped_rms": "PedRMS", "ped_eo": "PedEO", "qsum": "Qsum", "qtail": "Qtail",
+FEATURES = {"ped": "Ped", "ped_rms": "PedRMS", "ped_eo": "PedEO", "ped_max": "PedMax", "qsum": "Qsum", "qtail": "Qtail",
             "rtail": "Rtail", "fired": "Fired", "height": "Height", "peak": "Peak"}
 INT_FEATURES = {"fired", "peak"}
 MC_TRUTH = {"Trig_T": "TrigT", "Trig_Edep": "Edep", "Trig_Equench": "Equench",

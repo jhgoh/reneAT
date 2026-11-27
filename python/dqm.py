@@ -179,7 +179,7 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
             row[f"peak_median_{c}"] = _median_from_hist(hp, PEAK_EDGES)
             row[f"ped_median_{c}"] = float(np.nanmedian(per_sub(lambda x: x.get("fadc", {}).get(f"ped_median_{c}", np.nan))))
             row[f"pedrms_median_{c}"] = float(np.nanmedian(per_sub(lambda x: x.get("fadc", {}).get(f"pedrms_median_{c}", np.nan))))
-            for key in ("pedeo_median", "rise_median", "width_median", "fired_median"):
+            for key in ("pedeo_median", "rise_median", "width_median", "fired_median", "prepulse_frac"):
                 v = per_sub(lambda x: (x.get("fadc", {}).get(f"{key}_{c}") if x.get("fadc", {}).get(f"{key}_{c}") is not None else np.nan))
                 row[f"{key}_{c}"] = float(np.nanmedian(v)) if np.isfinite(v).any() else None
                 if key == "rise_median" and np.isfinite(v).any():
@@ -426,7 +426,7 @@ TREND_KEYS = ["dataset", "type", "source", "livetime", "rate_both_ab", "rate_bot
               "ped_median_0", "ped_median_1", "pedrms_median_0", "pedrms_median_1",
               "peak_median_0", "peak_median_1", "qsum_median_0", "qsum_median_1", "qgm_median",
               "log_ab_median", "pedeo_median_0", "pedeo_median_1", "rise_median_0", "rise_median_1",
-              "width_median_0", "width_median_1", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
+              "width_median_0", "width_median_1", "prepulse_frac_0", "prepulse_frac_1", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
 
 
 def trend(base=None):

@@ -219,6 +219,7 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
             fs[f"peak_median_{c}"] = float(np.median(cols[f"Peak_{c}"]))
             fs[f"qsum_median_{c}"] = float(np.median(cols[f"Qsum_{c}"]))
             fs[f"pedeo_median_{c}"] = float(np.median(cols[f"PedEO_{c}"]))
+            fs[f"prepulse_frac_{c}"] = float((cols[f"PedMax_{c}"] > 8).mean())   # pulse > ~1 p.e. in the pedestal window
             # pulse shape: rise (peak - leading edge) and effective width Qsum / height, pulses well above THR
             ok = (cols[f"Fired_{c}"] >= 0) & (cols[f"Height_{c}"] > 200) & (cols[f"Sat_{c}"] == 0)
             rise = (cols[f"Peak_{c}"] - cols[f"Fired_{c}"])[ok]
