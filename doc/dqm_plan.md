@@ -26,7 +26,6 @@
 | 종류 | 특화 그림 | 관련 커미셔닝 단계 |
 |---|---|---|
 | LED | LED 펄스 위치, 광전자 수(photostatistics), SPE fit, HV 스캔이면 gain vs HV, 현장 SPE와 비교 | 2 |
-| 레이저 | 세기 단계별 Qsum·높이(선형성), 포화 시작점, A·B 시간 차 | 2 |
 | source | 소스 피크 fit(위치·폭), 가까운 background 런을 뺀 스펙트럼, 소스 위치별 A/B 비, 소스 rate | 3–5 |
 | background | 기준 런과 스펙트럼 비교, rate 안정성, 뮤온 rate, 뮤온 뒤 중성자, 지연 쌍 후보 | 6–10 |
 | veto 테스트 | veto 중심, 패널별 효율·문턱 | 8 |
@@ -62,11 +61,12 @@
 - [ ] subrun 평균 파형(채널별, 높이 구간별, 앞쪽 가장자리 기준 정렬): 펄스 모양, A·B 시간
 - [ ] 트리거 펄스 뒤 창의 펄스 수와 시간 분포: afterpulse. 앞 트리거와의 시간 간격별 단일 펄스 수: dark rate와 상관 펄스 구분
 - [ ] 런 종류별 창 설정: LED 런은 1008샘플 기록, LED 펄스 약 366번 샘플, LED 동기 트리거 ch3. run sheet 종류나 DAQ config로 `QSumConfig`를 고름
-- [ ] 레이저 런의 세기 단계 구분: 시간 구간이나 run sheet 메모로
 - [ ] prompt 출력 버전 번호: DQM이 오래된 출력을 알아보고 다시 돌릴지 판단
 
 ### DQM만으로 되는 것 (prompt ntuple에 이미 있음)
 - source 피크 fit, A/B 비: `Qsum_c`, `Qgm`
 - 소스 rate, background 빼기: 다른 런의 prompt 출력을 같이 읽어서
 - 뮤온 rate, 뮤온 뒤 중성자, 지연 쌍: `NVeto`, `DtPrevMuon`, `DtPrevFADC`
-- 포화, 선형성의 높이 쪽: `Height_c`, `Sat_c`
+- 포화: `Height_c`, `Sat_c`
+
+레이저 런은 설치·측정 조건 관리가 어려웠던 데이터라 런 종류별 페이지에서 뺐어요(2026-11-27). 레이저 런은 공통 페이지만 그려요.
