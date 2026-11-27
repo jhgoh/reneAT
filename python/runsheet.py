@@ -5,7 +5,7 @@ run ranges. Read through its public CSV export and cached locally, so analysis j
 nodes without internet use the last downloaded copy.
 
     RENE_RUNSHEET        sheet URL (setup.sh sets the default; a bit.ly link works too)
-    RENE_RUNSHEET_CACHE  cache directory (default ~/.cache/reneat/runsheet)
+    RENE_RUNSHEET_CACHE  cache directory (default <reneAT>/cache/runsheet, not in git)
 
 ``RunSheet()[run]`` gives a dict with the sheet columns as written plus ``dataset`` and
 ``type``: source / no source / LED / laser / veto test / blank (Source left empty) / other.
@@ -18,7 +18,8 @@ import re
 import time
 import urllib.request
 
-CACHE = os.environ.get("RENE_RUNSHEET_CACHE", os.path.expanduser("~/.cache/reneat/runsheet"))
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+CACHE = os.environ.get("RENE_RUNSHEET_CACHE", os.path.join(REPO, "cache", "runsheet"))
 _SOURCE_RE = re.compile(r"(cs|co|na|zn|th|ge|eu|cf|am-?be|duran)\s*-?\d*", re.I)
 
 

@@ -74,7 +74,7 @@ reneat watch --first 4370 --dry-run             # 처리할 런만 보기
 
 ### 런 정보: offline good-run 시트
 Google 시트(데이터셋 탭마다 런별 Source, Detector, HV, THR, Description, Data issue)를 공개 CSV로 받아 로컬에 캐시합니다.
-주소는 `RENE_RUNSHEET`(기본값은 `setup.sh`), 캐시는 `RENE_RUNSHEET_CACHE`(기본 `~/.cache/reneat/runsheet`).
+주소는 `RENE_RUNSHEET`(기본값은 `setup.sh`), 캐시는 `RENE_RUNSHEET_CACHE`(기본 reneAT 안의 `cache/runsheet`, git에는 넣지 않음).
 인터넷이 없는 계산 노드에서는 마지막으로 받은 캐시를 씁니다.
 
 ```bash

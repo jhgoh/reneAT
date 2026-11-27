@@ -69,3 +69,6 @@ Testing/
 .cache/
 
 __pycache__
+
+# local caches (run sheet)
+cache/
