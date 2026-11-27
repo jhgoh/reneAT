@@ -40,6 +40,7 @@ DT_EDGES = np.geomspace(0.1, 1e6, 141)                   # us
 PEAK_EDGES = np.arange(0, 497)                           # sample
 PED_EDGES = np.arange(-0.5, 400.5, 1.0)                   # ADC (inverted pedestal)
 RMS_EDGES = np.linspace(0, 20, 201)
+RISE_EDGES = np.arange(-0.5, 150.5, 1.0)                 # samples from leading edge to peak
 
 
 def out_dir(base=None):
@@ -202,6 +203,14 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
             fs[f"pedrms_median_{c}"] = float(np.median(cols[f"PedRMS_{c}"]))
             fs[f"peak_median_{c}"] = float(np.median(cols[f"Peak_{c}"]))
             fs[f"qsum_median_{c}"] = float(np.median(cols[f"Qsum_{c}"]))
+            fs[f"pedeo_median_{c}"] = float(np.median(cols[f"PedEO_{c}"]))
+            # pulse shape: rise (peak - leading edge) and effective width Qsum / height, pulses well above THR
+            ok = (cols[f"Fired_{c}"] >= 0) & (cols[f"Height_{c}"] > 200) & (cols[f"Sat_{c}"] == 0)
+            rise = (cols[f"Peak_{c}"] - cols[f"Fired_{c}"])[ok]
+            fs[f"rise_{c}"] = _hist(rise, RISE_EDGES).tolist()
+            fs[f"rise_median_{c}"] = float(np.median(rise)) if ok.any() else None
+            fs[f"width_median_{c}"] = float(np.median(cols[f"Qsum_{c}"][ok] / cols[f"Height_{c}"][ok])) if ok.any() else None
+            fs[f"fired_median_{c}"] = float(np.median(cols[f"Fired_{c}"][cols[f"Fired_{c}"] >= 0])) if (cols[f"Fired_{c}"] >= 0).any() else None
         fs["qgm"] = _hist(cols["Qgm"], QSUM_EDGES).tolist()
         lr = np.log10(np.clip(cols["Qsum_0"], 1, None) / np.clip(cols["Qsum_1"], 1, None))
         fs["log_ab_median"] = float(np.median(lr))

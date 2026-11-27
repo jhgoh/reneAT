@@ -28,6 +28,7 @@ class QSumConfig:
                  tail1=300, tail_off=15,
                  fired_mode="fixed",      # "fixed": (wave-ped) >= thr ; "nsigma": >= n*ped_rms
                  fired_nsigma=5.0,
+                 ped_mode="parity",       # "parity": even and odd samples get their own pedestal; "single"
                  dead_thr=1_000_000):     # Run-tree F_THR above this => channel disabled
         self.ped1, self.ped2 = ped1, ped2
         self.sig1, self.sig_len = sig1, sig_len
@@ -36,12 +37,13 @@ class QSumConfig:
         self.tail1, self.tail_off = tail1, tail_off
         self.fired_mode = fired_mode
         self.fired_nsigma = fired_nsigma
+        self.ped_mode = ped_mode
         self.dead_thr = dead_thr
 
     def as_dict(self):
         return {k: getattr(self, k) for k in
                 ("ped1", "ped2", "sig1", "sig_len", "sig2", "tail_mode",
-                 "tail1", "tail_off", "fired_mode", "fired_nsigma", "dead_thr")}
+                 "tail1", "tail_off", "fired_mode", "fired_nsigma", "ped_mode", "dead_thr")}
 
 
 def compute_channel(wave, thr, cfg):
@@ -49,16 +51,35 @@ def compute_channel(wave, thr, cfg):
 
     wave : (N, NDP) float array of raw ADC samples
     thr  : per-channel fixed threshold (ADC, used when fired_mode == "fixed")
-    Returns dict of (N,) arrays: ped, ped_rms, qsum, qtail, rtail,
+    Returns dict of (N,) arrays: ped, ped_rms, ped_eo, qsum, qtail, rtail,
     fired (first sample over threshold, -1 if none), height (max of the
     pedestal-subtracted signal window) and peak (its sample index).
+
+    The FADC writes even samples (0, 2, 4, ...) higher than odd ones by a fixed offset
+    (PMT A ~+4, B ~+1 counts, from the two sample paths of the 500 MS/s ADC).
+    ped_mode "parity" takes a pedestal for even and one for odd samples in every event and
+    subtracts each from its own samples; ped is their mean, ped_eo = even - odd, and ped_rms
+    is the random noise left. Sums over windows of even length starting on an even sample
+    (the default Qsum and Qtail windows) are the same in both modes.
     """
     wave = np.asarray(wave, dtype=np.float64)
 
-    ped = wave[:, cfg.ped1:cfg.ped2].mean(axis=1)
-    ped_rms = wave[:, cfg.ped1:cfg.ped2].std(axis=1)
-
-    w = wave - ped[:, None]                      # pedestal-subtracted
+    pw = wave[:, cfg.ped1:cfg.ped2]
+    if cfg.ped_mode == "parity":
+        k = cfg.ped1 % 2                        # pw[:, k::2] are the even samples of the record
+        pe, po = pw[:, k::2].mean(axis=1), pw[:, 1 - k::2].mean(axis=1)
+        even = (np.arange(wave.shape[1]) % 2 == 0)[None, :]
+        pedv = np.where(even, pe[:, None], po[:, None])
+        ped, ped_eo = 0.5 * (pe + po), pe - po
+        ped_rms = (pw - pedv[:, cfg.ped1:cfg.ped2]).std(axis=1)
+        w = wave - pedv
+    else:
+        ped = pw.mean(axis=1)
+        ped_eo = pw[:, 0::2].mean(axis=1) - pw[:, 1::2].mean(axis=1)
+        if cfg.ped1 % 2:
+            ped_eo = -ped_eo
+        ped_rms = pw.std(axis=1)
+        w = wave - ped[:, None]                  # pedestal-subtracted
 
     qsum = w[:, cfg.sig1:cfg.sig2].sum(axis=1)
 
@@ -88,7 +109,7 @@ def compute_channel(wave, thr, cfg):
     height = np.take_along_axis(ws, peak[:, None], axis=1)[:, 0]
     peak = peak + cfg.sig1
 
-    return dict(ped=ped, ped_rms=ped_rms, qsum=qsum,
+    return dict(ped=ped, ped_rms=ped_rms, ped_eo=ped_eo, qsum=qsum,
                 qtail=qtail, rtail=rtail, fired=fired,
                 height=height, peak=peak)
 

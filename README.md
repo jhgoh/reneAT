@@ -37,6 +37,11 @@ reneat overview --set Cs137 data_4185.root data_4099.root mc_Cs137.root \
 - 경로는 환경변수 `RENE_PRD`, `RENE_DB`, `RENE_CONFIG`로 바꿀 수 있습니다 (기본: `/store/cpnr-data/RENE/...`).
 - 파이썬에서 직접 쓸 때는 `setup.sh` 후 `import ntuple, compare` 처럼 불러옵니다.
 - Qsum 정의(pedestal 0–99, 신호 100–349, tail 300–349 샘플)는 W.J. Lee의 ChargeSum을 따릅니다 (`qsum.QSumConfig`).
+- FADC는 짝수 샘플을 홀수 샘플보다 일정하게 높게 기록합니다 (PMT A 약 +4, B 약 +1 counts; 500 MS/s ADC의 두 샘플 경로 차이로 추정).
+  기본값 `ped_mode="parity"`는 이벤트마다 짝수·홀수 샘플의 pedestal을 따로 구해 각각 뺍니다. 짝수 길이 창의 합(Qsum, Qtail)은
+  `single`과 같고, 펄스 높이·fired·`PedRMS`(남은 무작위 노이즈)가 달라집니다. 그 차이는 `PedEO`로 남깁니다.
+- 채널 간 시간 비교는 펄스 최댓값(`Peak`)이 아니라 앞쪽 가장자리(`Fired`) 기준으로 합니다. 2026-06-14(런 4232와 4234 사이)부터
+  PMT A 펄스 뒤에 약 60 ns 간격의 반복 펄스가 생겨 최댓값 위치가 늦어졌지만, 앞쪽 가장자리는 A, B 모두 그대로입니다.
 
 ### Prompt 처리와 data quality monitoring
 PRD 런 전송이 끝나면 런의 모든 엔트리를 한 번 읽어(`prompt`) sub-run마다 결과를 남기고,

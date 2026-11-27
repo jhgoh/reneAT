@@ -27,12 +27,12 @@ import matplotlib.pyplot as plt
 
 import prd
 import prompt
-from prompt import QSUM_EDGES, SADC_EDGES, DT_EDGES, PEAK_EDGES, PED_EDGES, RMS_EDGES
+from prompt import QSUM_EDGES, SADC_EDGES, DT_EDGES, PEAK_EDGES, PED_EDGES, RMS_EDGES, RISE_EDGES
 
 # prompt pair search (delayed = FADC trigger following another one), in us and Qgm
 PAIR_WINDOW = (10.0, 200.0)    # starts after the retriggers that follow large pulses (< 10 us)
 MUON_VETO_US = 1000.0
-DEFAULT_FLAGS = {"max_gap_s": 1.0, "rate_drop": 0.5, "ped_shift": 3.0, "peak_shift": 5.0}
+DEFAULT_FLAGS = {"max_gap_s": 1.0, "rate_drop": 0.5, "ped_shift": 3.0, "rise_shift": 5.0, "noise_max": 1.5}
 
 
 def dqm_dir(run=None, base=None):
@@ -153,7 +153,7 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
 
     # ---------------- FADC
     if has_fadc:
-        fig, ax = plt.subplots(3, 3, figsize=(17, 12))
+        fig, ax = plt.subplots(3, 4, figsize=(22, 12))
         for c, col in ((0, "C0"), (1, "C3")):
             h = _sum_hist(summ, f"qsum_{c}", "fadc")
             ax[0, 0].step(_centers(QSUM_EDGES)[1:], (h / np.diff(QSUM_EDGES) / livetime)[1:], where="mid", color=col, label=f"PMT {'AB'[c]}")
@@ -163,8 +163,23 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
             row[f"peak_median_{c}"] = _median_from_hist(hp, PEAK_EDGES)
             row[f"ped_median_{c}"] = float(np.nanmedian(per_sub(lambda x: x.get("fadc", {}).get(f"ped_median_{c}", np.nan))))
             row[f"pedrms_median_{c}"] = float(np.nanmedian(per_sub(lambda x: x.get("fadc", {}).get(f"pedrms_median_{c}", np.nan))))
+            for key in ("pedeo_median", "rise_median", "width_median", "fired_median"):
+                v = per_sub(lambda x: (x.get("fadc", {}).get(f"{key}_{c}") if x.get("fadc", {}).get(f"{key}_{c}") is not None else np.nan))
+                row[f"{key}_{c}"] = float(np.nanmedian(v)) if np.isfinite(v).any() else None
+                if key == "rise_median" and np.isfinite(v).any():
+                    bad = [sb for sb, x in zip(subs, v) if abs(x - row[f"{key}_{c}"]) > flags_cfg["rise_shift"]]
+                    if bad:
+                        flags.append(f"PMT {'AB'[c]} pulse shape changed (rise time off by > {flags_cfg['rise_shift']:.0f} samples) in {len(bad)} sub-runs: {bad[:10]}")
+            if row[f"pedrms_median_{c}"] > flags_cfg["noise_max"]:
+                flags.append(f"PMT {'AB'[c]} random noise {row[f'pedrms_median_{c}']:.2f} ADC (> {flags_cfg['noise_max']})")
+            hr = _sum_hist(summ, f"rise_{c}", "fadc")
+            if hr is not None:
+                ax[0, 3].step(_centers(RISE_EDGES), hr / max(hr.sum(), 1), where="mid", color=col,
+                              label=f"PMT {'AB'[c]}: median {_median_from_hist(hr, RISE_EDGES):.0f}, Qsum/height {row[f'width_median_{c}'] or 0:.1f}")
             for (i, j), key, lab in (((1, 0), "ped_median", "pedestal median [ADC]"),
-                                     ((1, 1), "pedrms_median", "pedestal rms median [ADC]"),
+                                     ((1, 1), "pedrms_median", "random noise: pedestal rms after even/odd pedestals [ADC]"),
+                                     ((1, 3), "pedeo_median", "even - odd sample offset [ADC]"),
+                                     ((2, 3), "rise_median", "pulse rise: peak - leading edge [samples]"),
                                      ((1, 2), "peak_median", "pulse peak sample median"),
                                      ((2, 0), "qsum_median", "Qsum median")):
                 y = per_sub(lambda x: x.get("fadc", {}).get(f"{key}_{c}", np.nan))
@@ -187,6 +202,7 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
         ax[2, 1].plot(tmid, et_rate["1"] + np.nan_to_num(et_rate["3"]), ".", ms=3, color="k")
         ax[2, 1].set_ylabel("FADC trigger rate [Hz]"); ax[2, 1].set_xlabel("hours since run start")
         ax[2, 2].set_ylabel("saturated fraction"); ax[2, 2].set_xlabel("hours since run start")
+        ax[0, 3].set_xlabel("peak - leading edge [samples], height > 200, not saturated"); ax[0, 3].set_title("pulse rise")
         for a in ax.flat:
             if a.get_legend_handles_labels()[0] and a.get_legend() is None:
                 a.legend(fontsize=8)
@@ -388,7 +404,8 @@ def _fmt(v):
 TREND_KEYS = ["livetime", "rate_fadc_only", "rate_both", "rate_sadc_only", "veto_rate_total",
               "ped_median_0", "ped_median_1", "pedrms_median_0", "pedrms_median_1",
               "peak_median_0", "peak_median_1", "qsum_median_0", "qsum_median_1", "qgm_median",
-              "log_ab_median", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
+              "log_ab_median", "pedeo_median_0", "pedeo_median_1", "rise_median_0", "rise_median_1",
+              "width_median_0", "width_median_1", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
 
 
 def trend(base=None):
@@ -418,10 +435,12 @@ def trend(base=None):
               ("pulse peak sample", ["peak_median_0", "peak_median_1"], False),
               ("Qsum median", ["qsum_median_0", "qsum_median_1", "qgm_median"], True),
               ("median log10(A/B)", ["log_ab_median"], False),
+              ("even - odd offset [ADC] / random noise", ["pedeo_median_0", "pedeo_median_1", "pedrms_median_0", "pedrms_median_1"], False),
+              ("pulse rise [samples] / Qsum/height", ["rise_median_0", "rise_median_1", "width_median_0", "width_median_1"], False),
               ("saturated fraction", ["sat_frac_0", "sat_frac_1"], False),
               ("delayed pairs per day", ["pairs_per_day", "pairs_excess_per_day"], False),
               ("livetime [h] / flags", ["livetime", "n_flags"], False)]
-    fig, ax = plt.subplots(3, 3, figsize=(18, 12), sharex=True)
+    fig, ax = plt.subplots(4, 3, figsize=(18, 15), sharex=True)
     for a, (t, keys, logy) in zip(ax.flat, panels):
         for k in keys:
             y = np.array([r.get(k, np.nan) if r.get(k) is not None else np.nan for r in rows], float)

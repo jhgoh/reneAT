@@ -26,11 +26,13 @@ def _qsum_args(ap):
     g.add_argument("--tail-mode", choices=["fixed", "fired"], default="fixed")
     g.add_argument("--tail1", type=int, default=300)
     g.add_argument("--tail-off", type=int, default=15)
+    g.add_argument("--ped-mode", choices=["parity", "single"], default="parity",
+                   help="parity: separate pedestal for even and odd samples (FADC sample-path offset)")
 
 
 def _qsum_cfg(a):
     return QSumConfig(ped1=a.ped1, ped2=a.ped2, sig1=a.sig1, sig_len=a.sig_len,
-                      tail_mode=a.tail_mode, tail1=a.tail1, tail_off=a.tail_off)
+                      tail_mode=a.tail_mode, tail1=a.tail1, tail_off=a.tail_off, ped_mode=a.ped_mode)
 
 
 def cmd_ntuple(a):

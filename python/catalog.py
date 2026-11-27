@@ -26,6 +26,14 @@ _SOURCES = [
     ("none", r"no\s*source|background"),
 ]
 
+# Any other "<element><mass>" written in the description is taken as written (e.g. Th232, Ge68,
+# and also Ge60 or Zn60 if that is what the shift log says). Case-sensitive, no space inside;
+# B is left out because veto panels are called B1, B30, ...
+_ELEMENTS = ("He Li Be C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se "
+             "Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy "
+             "Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf").split()
+_ISOTOPE = re.compile(r"(?<![A-Za-z0-9])(%s)[_-]?(\d{2,3})(?![\d.])" % "|".join(sorted(_ELEMENTS, key=len, reverse=True)))
+
 
 def latest_db(db_dir=None):
     dbs = sorted(glob.glob(os.path.join(db_dir or DB_DIR, "runcatalog.20*.db")))
@@ -37,9 +45,14 @@ def latest_db(db_dir=None):
 
 def source_of(desc):
     """Source label from a run description; several sources are joined by '+'
-    (e.g. 'Co60+AmBe' for runs with sources on the veto). None if not stated."""
+    (e.g. 'Co60+AmBe' for runs with sources on the veto). Names are taken as written in the
+    shift log, not corrected. None if not stated."""
     d = (desc or "").lower()
     hit = [name for name, pat in _SOURCES if re.search(pat, d)]
+    for m in _ISOTOPE.finditer(desc or ""):
+        name = m.group(1) + m.group(2)
+        if name not in hit:
+            hit.append(name)
     if len(hit) > 1 and "none" in hit:
         hit.remove("none")
     return "+".join(hit) if hit else None
