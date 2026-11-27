@@ -30,7 +30,7 @@ import uproot
 
 import prd
 from ntuple import FEATURES, INT_FEATURES
-from qsum import QSumConfig, compute_channel
+from qsum import QSumConfig, compute_channel, _clipped_mean
 
 PROMPT_BASE = os.environ.get("RENE_PROMPT")
 ADC_MAX = 4095
@@ -42,6 +42,29 @@ PEAK_EDGES = np.arange(0, 497)                           # sample
 PED_EDGES = np.arange(-0.5, 400.5, 1.0)                   # ADC (inverted pedestal)
 RMS_EDGES = np.linspace(0, 20, 201)
 RISE_EDGES = np.arange(-0.5, 150.5, 1.0)                 # samples from leading edge to peak
+SPE_EDGES = np.arange(-20.0, 400.0, 4.0)                 # single-pulse charge [ADC x sample]
+SPE_MIN_HEIGHT = 5.0                                     # ADC, ~6 sigma of the random noise
+
+
+def _single_pulses(w, thr=SPE_MIN_HEIGHT, n_ped=100, pre=4, post=12):
+    """Charge of isolated small pulses in the pedestal window [0, n_ped) of records that have one.
+
+    Baseline: outlier-rejecting mean per parity over the window. A pulse is the largest sample
+    (>= thr) at least `pre` samples from the start and `post` from the end; it is isolated if no
+    other sample >= thr lies outside [peak - 5, peak + post). Charge = sum over [peak - pre, peak + post).
+    """
+    p = w[:, :n_ped]
+    pe, po = _clipped_mean(p[:, 0::2], 4.0), _clipped_mean(p[:, 1::2], 4.0)
+    ps = p - np.where((np.arange(n_ped) % 2 == 0)[None, :], pe[:, None], po[:, None])
+    k = np.arange(pre, n_ped - post)
+    pk = k[ps[:, pre:n_ped - post].argmax(axis=1)]
+    h = ps[np.arange(len(ps)), pk]
+    idx = np.arange(n_ped)[None, :]
+    outside = (idx < pk[:, None] - 5) | (idx >= pk[:, None] + post)
+    iso = ~((ps >= thr) & outside).any(axis=1)
+    ok = (h >= thr) & iso
+    win = (idx >= pk[:, None] - pre) & (idx < pk[:, None] + post)
+    return (ps * win).sum(axis=1)[ok]
 
 
 def out_dir(base=None):
@@ -89,7 +112,9 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
     n = tree.num_entries
     has_sadc = "S_Triggered" in tree
     has_ftrig = "F_Triggered" in tree
+    has_fped = "F_Pedestal" in tree
     base_br = (["TrgNum", "EventType", "TCBTRGTime"] + (["F_Triggered"] if has_ftrig else [])
+               + (["F_Pedestal"] if has_fped else [])
                + (["S_Triggered", "S_ADC"] if has_sadc else []))
     clock = prd.TCBClock()
     pieces = {k: [] for k in ("trg", "et", "t", "nveto", "ftrig")}
@@ -107,6 +132,8 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
                     "mult": np.zeros(nch + 1, np.int64), "pair": np.zeros((nch, nch), np.int64)}
 
         fadc_rows = []
+        mon = {c: {"spe": np.zeros(len(SPE_EDGES) - 1, np.int64), "n": 0, "rule_on_bit_off": 0,
+                   "rule_off_bit_on": 0, "eff_even": [], "eff_odd": [], "board_ped": set()} for c in channels}
         for start in range(0, n, chunk):
             stop = min(n, start + chunk)
             a = tree.arrays(base_br, entry_start=start, entry_stop=stop, library="ak")
@@ -144,9 +171,23 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
             w0, w1 = start + sel[0], start + sel[-1] + 1
             wa = tree.arrays([f"F_Waveform_{c}" for c in channels], entry_start=w0, entry_stop=w1, library="ak")
             row = {"Entry": start + sel}
+            ft_sel = pieces["ftrig"][-1][sel]
+            bped = ak.to_numpy(a["F_Pedestal"])[sel] if has_fped else None
             for c in channels:
                 w = prd.waveform(wa, c)[sel - (w0 - start)]
                 r = compute_channel(w, thr[c] if c < len(thr) else 80.0, cfg)
+                m = mon[c]
+                m["n"] += len(w)
+                m["spe"] += _hist(_single_pulses(w[r["ped_max"] >= SPE_MIN_HEIGHT]), SPE_EDGES)
+                if bped is not None and c < bped.shape[1] and c < ft_sel.shape[1]:
+                    # FADC discriminator: a raw sample >= board pedestal + THR + 1 sets the channel bit
+                    rule = (w.max(axis=1) - bped[:, c]) >= thr[c] + 1
+                    m["rule_on_bit_off"] += int((rule & (ft_sel[:, c] == 0)).sum())
+                    m["rule_off_bit_on"] += int((~rule & (ft_sel[:, c] == 1)).sum())
+                    eff = bped[:, c] + thr[c] + 1 - r["ped"]            # threshold above the real baseline
+                    m["eff_even"].append(eff - r["ped_eo"] / 2)
+                    m["eff_odd"].append(eff + r["ped_eo"] / 2)
+                    m["board_ped"].update(np.unique(bped[:, c]).astype(int).tolist())
                 for k, name in FEATURES.items():
                     row[f"{name}_{c}"] = r[k].astype(np.int32 if k in INT_FEATURES else np.float32)
                 row[f"Sat_{c}"] = (w.max(axis=1) >= ADC_MAX).astype(np.int32)
@@ -227,6 +268,17 @@ def process_subrun(fn, cfg=None, chunk=100_000, channels=(0, 1)):
             fs[f"rise_median_{c}"] = float(np.median(rise)) if ok.any() else None
             fs[f"width_median_{c}"] = float(np.median(cols[f"Qsum_{c}"][ok] / cols[f"Height_{c}"][ok])) if ok.any() else None
             fs[f"fired_median_{c}"] = float(np.median(cols[f"Fired_{c}"][cols[f"Fired_{c}"] >= 0])) if (cols[f"Fired_{c}"] >= 0).any() else None
+        for c in channels:
+            m = mon[c]
+            fs[f"spe_{c}"] = m["spe"].tolist()
+            fs[f"rule_n_{c}"] = m["n"]
+            fs[f"rule_on_bit_off_{c}"] = m["rule_on_bit_off"]
+            fs[f"rule_off_bit_on_{c}"] = m["rule_off_bit_on"]
+            if m["eff_even"]:
+                fs[f"effthr_even_{c}"] = float(np.median(np.concatenate(m["eff_even"])))
+                fs[f"effthr_odd_{c}"] = float(np.median(np.concatenate(m["eff_odd"])))
+            fs[f"board_ped_{c}"] = sorted(m["board_ped"])
+        fs["f_thr"] = [float(x) for x in thr[:len(channels)]]
         fs["qgm"] = _hist(cols["Qgm"], QSUM_EDGES).tolist()
         lr = np.log10(np.clip(cols["Qsum_0"], 1, None) / np.clip(cols["Qsum_1"], 1, None))
         fs["log_ab_median"] = float(np.median(lr))

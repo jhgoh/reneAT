@@ -27,12 +27,47 @@ import matplotlib.pyplot as plt
 
 import prd
 import prompt
-from prompt import QSUM_EDGES, SADC_EDGES, DT_EDGES, PEAK_EDGES, PED_EDGES, RMS_EDGES, RISE_EDGES
+from prompt import QSUM_EDGES, SADC_EDGES, DT_EDGES, PEAK_EDGES, PED_EDGES, RMS_EDGES, RISE_EDGES, SPE_EDGES
 
 # prompt pair search (delayed = FADC trigger following another one), in us and Qgm
 PAIR_WINDOW = (10.0, 200.0)    # starts after the retriggers that follow large pulses (< 10 us)
 MUON_VETO_US = 1000.0
-DEFAULT_FLAGS = {"max_gap_s": 1.0, "rate_drop": 0.5, "ped_shift": 3.0, "rise_shift": 5.0, "noise_max": 1.5}
+DEFAULT_FLAGS = {"max_gap_s": 1.0, "rate_drop": 0.5, "ped_shift": 3.0, "rise_shift": 5.0, "noise_max": 1.5,
+                 "rule_mismatch": 0.01, "spe_shift": 0.10}
+PC_PER_ADC_SAMPLE = 0.488e-3 * 2e-9 / 50 * 1e12      # 2 V / 4096 counts, 2 ns, 50 ohm
+E_PC = 1.602176634e-7
+
+
+def spe_peak(h, edges=None):
+    """Position of the single-photoelectron peak in a single-pulse charge histogram:
+    Gaussian fit around the smoothed mode above 15 ADC x sample. None if too few entries."""
+    from scipy.optimize import curve_fit
+    edges = SPE_EDGES if edges is None else edges
+    h = np.asarray(h, float); x = _centers(edges)
+    m = x > 15
+    if h[m].sum() < 200:
+        return None
+    mode = x[m][np.argmax(np.convolve(h[m], np.ones(5) / 5, "same"))]
+    sel = (x > 0.6 * mode) & (x < 1.5 * mode)
+    g = lambda x, a, mu, s: a * np.exp(-0.5 * ((x - mu) / s) ** 2)
+    try:
+        p, _ = curve_fit(g, x[sel], h[sel], p0=[h[sel].max(), mode, 0.4 * mode])
+        return float(p[1]) if 0.5 * mode < p[1] < 1.5 * mode else float(mode)
+    except Exception:
+        return float(mode)
+
+
+def _previous_summary(run, base):
+    """summary.json of the closest earlier run that has one."""
+    best = None
+    for fn in glob.glob(os.path.join(dqm_dir(None, base), "[0-9]" * 6, "summary.json")):
+        r = int(os.path.basename(os.path.dirname(fn)))
+        if r < run and (best is None or r > best[0]):
+            best = (r, fn)
+    if best is None:
+        return None
+    with open(best[1]) as fh:
+        return json.load(fh)
 
 
 def dqm_dir(run=None, base=None):
@@ -226,6 +261,77 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
         fig.savefig(os.path.join(out, "fadc.png"), dpi=80); plt.close(fig)
         pages.append("fadc.png")
 
+    # ---------------- PMT / FADC front end: single p.e., effective threshold, trigger rule, settings
+    if has_fadc:
+        fig, ax = plt.subplots(2, 3, figsize=(18, 9))
+        g = max(1, len(good) // 12)                                     # ~12 time bins for the gain trend
+        for c, col in ((0, "C0"), (1, "C3")):
+            h = _sum_hist(summ, f"spe_{c}", "fadc")
+            if h is not None:
+                q1 = spe_peak(h)
+                row[f"spe_q1_{c}"] = q1
+                row[f"spe_pc_{c}"] = q1 * PC_PER_ADC_SAMPLE if q1 else None
+                row[f"spe_n_{c}"] = int(h.sum())
+                ax[0, 0].step(_centers(SPE_EDGES), h, where="mid", color=col,
+                              label=f"PMT {'AB'[c]}: peak {q1 or 0:.0f} ADCxsample = {(q1 or 0) * PC_PER_ADC_SAMPLE:.2f} pC (n={int(h.sum())})")
+                if q1:
+                    ax[0, 0].axvline(q1, color=col, ls=":")
+                tq, yq = [], []
+                for i in range(0, len(good), g):
+                    grp = good[i:i + g]
+                    hh = np.sum([np.asarray(summ[s]["fadc"][f"spe_{c}"]) for s in grp if f"spe_{c}" in summ[s].get("fadc", {})], axis=0)
+                    q = spe_peak(hh) if np.ndim(hh) else None
+                    if q:
+                        tq.append(np.mean([start[s] + 0.5 * summ[s]["duration"] for s in grp]) / 3600); yq.append(q * PC_PER_ADC_SAMPLE)
+                ax[0, 1].plot(tq, yq, "o-", ms=4, color=col, label=f"PMT {'AB'[c]}")
+                if q1 and yq and (max(yq) - min(yq)) / (q1 * PC_PER_ADC_SAMPLE) > flags_cfg["spe_shift"]:
+                    flags.append(f"PMT {'AB'[c]} single p.e. peak moves by {100 * (max(yq) - min(yq)) / (q1 * PC_PER_ADC_SAMPLE):.0f}% within the run")
+            for key, ls in (("effthr_even", "-"), ("effthr_odd", "--")):
+                y = per_sub(lambda x: x.get("fadc", {}).get(f"{key}_{c}", np.nan))
+                ax[0, 2].plot(tmid, y, ls, color=col, lw=0.8, label=f"PMT {'AB'[c]} {key.split('_')[1]} samples")
+                row[f"{key}_{c}"] = float(np.nanmedian(y)) if np.isfinite(y).any() else None
+            n = per_sub(lambda x: x.get("fadc", {}).get(f"rule_n_{c}", np.nan))
+            for key, mk in (("rule_on_bit_off", "v"), ("rule_off_bit_on", "^")):
+                k_ = per_sub(lambda x: x.get("fadc", {}).get(f"{key}_{c}", np.nan))
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    ax[1, 0].plot(tmid, k_ / n, mk, ms=3, color=col, label=f"PMT {'AB'[c]} {key.replace('_', ' ')}")
+                row[f"{key}_frac_{c}"] = float(np.nansum(k_) / max(np.nansum(n), 1))
+            mism = row[f"rule_on_bit_off_frac_{c}"] + row[f"rule_off_bit_on_frac_{c}"]
+            if mism > flags_cfg["rule_mismatch"]:
+                flags.append(f"PMT {'AB'[c]} trigger bit disagrees with raw >= board pedestal + THR + 1 in {100 * mism:.1f}% of triggers")
+            bp = sorted({v for s_ in good for v in summ[s_].get("fadc", {}).get(f"board_ped_{c}", [])})
+            row[f"board_ped_{c}"] = bp
+            if len(bp) > 1:
+                flags.append(f"PMT {'AB'[c]} board pedestal changes within the run: {bp}")
+            y = per_sub(lambda x: (x.get("fadc", {}).get(f"board_ped_{c}") or [np.nan])[0])
+            ax[1, 1].plot(tmid, y, ".", ms=3, color=col, label=f"PMT {'AB'[c]} board pedestal")
+            ax[1, 1].plot(tmid, per_sub(lambda x: x.get("fadc", {}).get(f"ped_median_{c}", np.nan)), "-", lw=0.8, color=col,
+                          label=f"PMT {'AB'[c]} measured baseline (mean of even and odd)")
+        fthr = sorted({tuple(summ[s_]["fadc"].get("f_thr", [])) for s_ in good if "fadc" in summ[s_]})
+        row["f_thr"] = list(fthr[0]) if len(fthr) == 1 else [list(x) for x in fthr]
+        if len(fthr) > 1:
+            flags.append(f"F_THR changes within the run: {fthr}")
+        try:
+            thr_sheet = float(sh.get("THR (mV)", "nan"))
+            if fthr and np.isfinite(thr_sheet) and any(abs(v - thr_sheet) > 0.5 for v in fthr[0][:2]):
+                flags.append(f"run sheet THR {thr_sheet:g} differs from F_THR {list(fthr[0][:2])}")
+        except ValueError:
+            pass
+        ax[0, 0].set_xlabel("isolated single-pulse charge in the pedestal window [ADC x sample]"); ax[0, 0].set_title("single p.e. (in situ)")
+        ax[0, 1].set_xlabel("hours since run start"); ax[0, 1].set_ylabel("single p.e. peak [pC]"); ax[0, 1].set_title("gain trend")
+        ax[0, 2].set_xlabel("hours since run start"); ax[0, 2].set_ylabel("ADC above the real baseline")
+        ax[0, 2].set_title("effective FADC threshold = board pedestal + THR + 1 - baseline")
+        ax[1, 0].set_xlabel("hours since run start"); ax[1, 0].set_ylabel("fraction of FADC triggers"); ax[1, 0].set_yscale("symlog", linthresh=1e-4)
+        ax[1, 0].set_title("trigger bit vs raw-sample threshold rule")
+        ax[1, 1].set_xlabel("hours since run start"); ax[1, 1].set_ylabel("ADC"); ax[1, 1].set_title("board pedestal and measured baseline")
+        ax[1, 2].axis("off")
+        for a in ax.flat:
+            if a.get_legend_handles_labels()[0]:
+                a.legend(fontsize=8)
+        fig.suptitle(title + "  -  PMT and FADC front end"); fig.tight_layout()
+        fig.savefig(os.path.join(out, "pmt.png"), dpi=80); plt.close(fig)
+        pages.append("pmt.png")
+
     # ---------------- SADC (veto)
     if has_sadc:
         s0 = next(summ[s]["sadc"] for s in good if "sadc" in summ[s])
@@ -238,6 +344,7 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
         tot = np.nansum(hits, axis=0) / livetime
         row["veto_rate_total"] = float(np.nansum(hits) / livetime)
         row["veto_rate_by_ch"] = tot.tolist()
+        row["sadc_thr"] = list(s0["thr"]); row["sadc_pmt_id"] = list(s0["pmt_id"])
         dead = [c + 1 for c in range(nch) if tot[c] == 0 and s0["thr"][c] < 10000]   # THR >= 10000: disabled
         if dead:
             flags.append(f"SADC channels without hits: {dead}")
@@ -344,6 +451,17 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
         fig.savefig(os.path.join(out, "prompt.png"), dpi=80); plt.close(fig)
         pages.append("prompt.png")
 
+    # settings compared with the previous run that has a DQM summary
+    prev = _previous_summary(run, base)
+    if prev:
+        changes = []
+        for key in ("f_thr", "board_ped_0", "board_ped_1", "sadc_thr", "sadc_pmt_id", "config"):
+            if key in prev and key in row and prev[key] != row[key]:
+                changes.append(key)
+        row["changed_since"] = {"run": prev["run"], "keys": changes}
+        if changes:
+            flags.append(f"settings changed since run {prev['run']}: {', '.join(changes)}")
+
     # ---------------- overview
     fig, ax = plt.subplots(2, 2, figsize=(16, 9))
     a = ax[0, 0]
@@ -426,7 +544,8 @@ TREND_KEYS = ["dataset", "type", "source", "livetime", "rate_both_ab", "rate_bot
               "ped_median_0", "ped_median_1", "pedrms_median_0", "pedrms_median_1",
               "peak_median_0", "peak_median_1", "qsum_median_0", "qsum_median_1", "qgm_median",
               "log_ab_median", "pedeo_median_0", "pedeo_median_1", "rise_median_0", "rise_median_1",
-              "width_median_0", "width_median_1", "prepulse_frac_0", "prepulse_frac_1", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
+              "width_median_0", "width_median_1", "prepulse_frac_0", "prepulse_frac_1",
+              "spe_pc_0", "spe_pc_1", "effthr_even_0", "effthr_odd_0", "effthr_even_1", "effthr_odd_1", "sat_frac_0", "sat_frac_1", "pairs_per_day", "pairs_excess_per_day", "n_error", "n_flags"]
 
 
 def trend(base=None):
@@ -458,10 +577,12 @@ def trend(base=None):
               ("median log10(A/B)", ["log_ab_median"], False),
               ("even - odd offset [ADC] / random noise", ["pedeo_median_0", "pedeo_median_1", "pedrms_median_0", "pedrms_median_1"], False),
               ("pulse rise [samples] / Qsum/height", ["rise_median_0", "rise_median_1", "width_median_0", "width_median_1"], False),
+              ("single p.e. peak [pC] (in situ)", ["spe_pc_0", "spe_pc_1"], False),
+              ("effective threshold [ADC]", ["effthr_even_0", "effthr_odd_0", "effthr_even_1", "effthr_odd_1"], False),
               ("saturated fraction", ["sat_frac_0", "sat_frac_1"], False),
               ("delayed pairs per day", ["pairs_per_day", "pairs_excess_per_day"], False),
               ("livetime [h] / flags", ["livetime", "n_flags"], False)]
-    fig, ax = plt.subplots(4, 3, figsize=(18, 15), sharex=True)
+    fig, ax = plt.subplots(5, 3, figsize=(18, 19), sharex=True)
     for a, (t, keys, logy) in zip(ax.flat, panels):
         for k in keys:
             y = np.array([r.get(k, np.nan) if r.get(k) is not None else np.nan for r in rows], float)
