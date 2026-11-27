@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import os, sys
+import os, signal, sys
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)   # quiet when piped into head
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "python"))
 from cli import main
 main()

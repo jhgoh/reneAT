@@ -44,11 +44,36 @@ def cmd_ntuple(a):
 
 
 def cmd_runs(a):
+    import runsheet
     cat = catalog.RunCatalog()
+    sheet = runsheet.try_sheet()
     for r in cat.runs(a.first, a.last, source=a.source, good_only=not a.include_bad):
         info = cat[r]
-        print(f"{r:6d}  {cat.source(r) or '-':10s} {info['stime']}  nfadc={info['nfadc']}  "
-              f"tfadc={info['tfadc']}  {'BAD:' + cat.badruns()[r] if cat.is_bad(r) else ''}")
+        sh = sheet.get(r) if sheet else None
+        if a.type and (sh is None or sh["type"] != a.type):
+            continue
+        if a.dataset and (sh is None or sh["dataset"] != a.dataset):
+            continue
+        shtxt = f"{sh['dataset']:7s} {sh['type']:9s} {sh['source'][:24]:24s}" if sh else f"{'':7s} {'':9s} {'(not in sheet)':24s}"
+        issue = (sh or {}).get("Data issue", "")
+        print(f"{r:6d}  {shtxt}  {info['stime']}  tfadc={info['tfadc']}"
+              f"{'  BAD:' + cat.badruns()[r] if cat.is_bad(r) else ''}{'  issue: ' + issue if issue else ''}")
+
+
+def cmd_runsheet(a):
+    import runsheet
+    if a.update:
+        runsheet.update()
+    sh = runsheet.RunSheet()
+    if not a.runs:
+        print(f"[reneat] run sheet cached {sh.updated}, {len(sh.runs())} runs")
+        for d in sh.datasets:
+            n = len(sh.runs(dataset=d["name"]))
+            print(f"  {d['name']:8s} {d['first']}-{d['last'] or ''}  {n:4d} runs  {d['location']}  {d['description'][:70]}")
+        return
+    for r in a.runs:
+        row = sh.get(r)
+        print(f"{r}: " + (json.dumps(row, ensure_ascii=False) if row else "not in the sheet"))
 
 
 def _load(path_or_run, cache, max_events):
@@ -274,7 +299,14 @@ def main(argv=None):
     p.add_argument("--last", type=int)
     p.add_argument("--source", help="Cs137, Co60, AmBe, Cf252, none, or e.g. Co60+AmBe")
     p.add_argument("--include-bad", action="store_true")
+    p.add_argument("--type", help="run type from the run sheet: source, no source, LED, laser, veto test, blank")
+    p.add_argument("--dataset", help="dataset name from the run sheet, e.g. Y2026B")
     p.set_defaults(func=cmd_runs)
+
+    p = sub.add_parser("runsheet", help="offline good-run sheet: datasets, or the rows of given runs")
+    p.add_argument("runs", nargs="*", type=int)
+    p.add_argument("--update", action="store_true", help="download the sheet again ($RENE_RUNSHEET)")
+    p.set_defaults(func=cmd_runsheet)
 
     p = sub.add_parser("overview", help="several sources, data - bkg vs MC as generated (no fit)")
     p.add_argument("--set", nargs="+", action="append", required=True, metavar="ARG",

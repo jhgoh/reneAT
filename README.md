@@ -29,6 +29,7 @@ reneat overview --set Cs137 data_4185.root data_4099.root mc_Cs137.root \
 | `python/compare.py` | 라이브타임 정규화 배경 빼기, MC 스케일 fit, A/B 비, 평균 펄스 모양 |
 | `python/prompt.py` | sub-run 단위 prompt 처리 (FADC feature 트리 + 점검·히스토그램 요약) |
 | `python/dqm.py` | 런 단위 DQM 페이지, 런 간 trend |
+| `python/runsheet.py` | offline good-run 시트 (CSV 캐시, 런 종류·데이터셋) |
 | `python/pipeline.py` | 런 전체 병렬 처리, SLURM 제출, 전송 끝난 런 찾기(`watch`) |
 
 - 데이터 livetime = 읽은 이벤트들의 TCBTRGTime 경과 시간. TCBTRGTime은 ns 단위이고 2^24 µs(16.78 s)마다
@@ -70,6 +71,23 @@ reneat watch --first 4370 --dry-run             # 처리할 런만 보기
   `0 * * * * bash -lc 'mamba activate hep2026.01; source /path/to/reneAT/setup.sh; RENE_PROMPT=/path/to/prompt reneat watch --first 4370 --mode slurm' >> watch.log 2>&1`
 - 시간: 런 안의 시간은 TCB 경과 시간이고, sub-run 사이는 앞 sub-run 마지막과 다음 sub-run 첫 엔트리의 TCB 차이(16.78 s 주기)로 잇습니다.
   veto 채널은 SADC 채널 번호(1부터)와 `S_PmtID`로만 표시합니다.
+
+### 런 정보: offline good-run 시트
+Google 시트(데이터셋 탭마다 런별 Source, Detector, HV, THR, Description, Data issue)를 공개 CSV로 받아 로컬에 캐시합니다.
+주소는 `RENE_RUNSHEET`(기본값은 `setup.sh`), 캐시는 `RENE_RUNSHEET_CACHE`(기본 `~/.cache/reneat/runsheet`).
+인터넷이 없는 계산 노드에서는 마지막으로 받은 캐시를 씁니다.
+
+```bash
+reneat runsheet --update                  # 시트를 새로 받음
+reneat runsheet                           # 데이터셋 목록과 런 수
+reneat runsheet 4237 4370                 # 런별 행 (시트에 적힌 그대로)
+reneat runs --first 4200 --type source    # 카탈로그 + 시트: 데이터셋, 종류, Source, Data issue
+reneat runs --dataset H2025C --type LED
+```
+
+- 런 종류(`type`): `source`(동위원소·AmBe·Cf·Duran 표기), `no source`("-", "BKG"), `LED`, `laser`(Laser module 데이터셋, "Laser ..."),
+  `veto test`(veto 시험 데이터셋), `blank`(Source 칸 비어 있음), `other`. Source 이름은 시트에 적힌 그대로 둡니다.
+- `dqm`은 데이터셋·종류·Source를 페이지와 trend 표에 넣고, Data issue 칸이 있으면 flag로 보여 줍니다.
 
 > PRD 제작은 별도의 공식 production 코드로 이루어집니다. 아래의 `Production/` 내용은 이전 자체 제작 도구로, 정리 예정입니다.
 

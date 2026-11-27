@@ -95,6 +95,9 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
         from catalog import RunCatalog
         catalog = RunCatalog()
     info = catalog[run] if run in catalog else {}
+    import runsheet
+    sheet = runsheet.try_sheet()
+    sh = (sheet.get(run) if sheet else None) or {}
 
     subs = sorted(summ)
     start = _chain(summ)
@@ -137,7 +140,10 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
 
     has_fadc = any("fadc" in summ[s] for s in good)
     has_sadc = any("sadc" in summ[s] for s in good)
-    row = {"run": run, "stime": info.get("stime"), "etime": info.get("etime"),
+    if sh.get("Data issue"):
+        flags.append(f"run sheet data issue: {sh['Data issue']}")
+    row = {"run": run, "dataset": sh.get("dataset", ""), "type": sh.get("type", ""), "source": sh.get("source", ""),
+           "stime": info.get("stime"), "etime": info.get("etime"),
            "config": os.path.basename(info.get("config") or ""), "rundesc": (info.get("rundesc") or "").replace("\n", " ")[:200],
            "n_prd_subruns": len(prd_subs), "n_processed": len(subs), "n_error": len(errors),
            "livetime": livetime, "tfadc_catalog": info.get("tfadc"),
@@ -147,7 +153,8 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
 
     os.makedirs(dqm_dir(run, base), exist_ok=True)
     out = dqm_dir(run, base)
-    title = f"Run {run}  {info.get('stime', '')}  {os.path.basename(info.get('config') or '')}"
+    title = (f"Run {run}  {info.get('stime', '')}  {sh.get('dataset', '')} {sh.get('source', '')}  "
+             f"{os.path.basename(info.get('config') or '')}")
 
     pages = []
 
@@ -365,6 +372,8 @@ def run_report(run, base=None, catalog=None, flags_cfg=None, pairs=True):
     txt = [f"run {run}", f"start {info.get('stime')}  end {info.get('etime')}",
            f"config {os.path.basename(info.get('config') or '')}",
            f"desc {(info.get('rundesc') or '').replace(chr(10), ' ')[:90]}",
+           f"run sheet: dataset {sh.get('dataset', '-')}, type {sh.get('type', '-')}, source {sh.get('source', '-')}, "
+           f"detector {sh.get('Detector', '-')}",
            f"PRD sub-runs {len(prd_subs)}, processed {len(subs)}, unreadable {len(errors)}",
            f"TCB livetime {livetime:.0f} s ({livetime / 3600:.2f} h), catalog tfadc {info.get('tfadc')}",
            f"entries {int(np.nansum(per_sub(lambda x: x['n_read'])))}, catalog nfadc {info.get('nfadc')} nsadc {info.get('nsadc')}",
@@ -401,7 +410,7 @@ def _fmt(v):
     return str(v)
 
 
-TREND_KEYS = ["livetime", "rate_fadc_only", "rate_both", "rate_sadc_only", "veto_rate_total",
+TREND_KEYS = ["dataset", "type", "source", "livetime", "rate_fadc_only", "rate_both", "rate_sadc_only", "veto_rate_total",
               "ped_median_0", "ped_median_1", "pedrms_median_0", "pedrms_median_1",
               "peak_median_0", "peak_median_1", "qsum_median_0", "qsum_median_1", "qgm_median",
               "log_ab_median", "pedeo_median_0", "pedeo_median_1", "rise_median_0", "rise_median_1",
@@ -456,7 +465,7 @@ def trend(base=None):
 
     lines = "".join(
         f"<tr><td><a href='{r['run']:06d}/index.html'>{r['run']}</a></td><td>{html.escape(str(r.get('stime')))}</td>"
-        f"<td>{html.escape(r.get('config', ''))}</td><td>{r.get('livetime', 0) / 3600:.2f}</td>"
+        f"<td>{html.escape((r.get('dataset') or '') + ' ' + (r.get('source') or ''))}</td><td>{html.escape(r.get('config', ''))}</td><td>{r.get('livetime', 0) / 3600:.2f}</td>"
         f"<td>{r.get('rate_fadc_only', 0) + r.get('rate_both', 0):.1f}</td><td>{r.get('veto_rate_total', 0) or 0:.0f}</td>"
         f"<td style='color:{'red' if r.get('flags') else 'green'}'>{html.escape('; '.join(r.get('flags', [])) or 'ok')}</td></tr>"
         for r in sorted(rows, key=lambda r: -r["run"]))
@@ -464,6 +473,6 @@ def trend(base=None):
         fh.write(f"""<!doctype html><meta charset="utf-8"><title>RENE DQM</title>
 <body style="font-family:sans-serif;margin:16px"><h2>RENE data quality</h2>
 <p><a href="trend.png"><img src="trend.png" style="max-width:100%"></a></p>
-<table border=1 cellpadding=3 style="border-collapse:collapse"><tr><th>run</th><th>start</th><th>config</th>
+<table border=1 cellpadding=3 style="border-collapse:collapse"><tr><th>run</th><th>start</th><th>dataset / source</th><th>config</th>
 <th>livetime [h]</th><th>FADC rate [Hz]</th><th>veto hit rate [Hz]</th><th>flags</th></tr>{lines}</table></body>""")
     return rows
